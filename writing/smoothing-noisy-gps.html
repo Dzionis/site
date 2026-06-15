@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<!-- Sample post — written to demonstrate the mechanism. Copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app · Dzionis Brek</title>
+<meta name="description" content="Why raw Apple Watch GPS jitters, and the two-stage pipeline — a Kalman filter to denoise, then Douglas–Peucker to simplify — that I use to get a clean running route." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app" />
+<meta property="og:description" content="The two-stage pipeline I use to turn jittery wrist GPS into a clean route: a Kalman filter to denoise, then Douglas–Peucker to simplify." />
+<meta property="og:url" content="https://dzionis.by/writing/smoothing-noisy-gps.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="../index.html#writing" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · Engineering</span>
+      <h1>Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app</h1>
+      <div class="post-meta">
+        <span>June 15, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Swift</span>
+        <span class="chip">Core Location</span>
+        <span class="chip">watchOS</span>
+        <span class="chip">Algorithms</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Raw GPS from an Apple Watch looks awful on a map. The runner went in a straight line down a street; the trace looks like they were dodging traffic. Here's the two-stage pipeline I use in iRunning to turn that mess into a route worth showing.</p>
+
+      <p>Every running app eventually hits the same wall: the line you draw on the map is only as good as the coordinates underneath it, and wrist GPS coordinates are <em>noisy</em>. The watch has a tiny antenna, it's strapped to an arm that swings, and it's sampling roughly once a second while the body wearing it moves through buildings, trees, and tunnels. Plot those points raw and you get a jagged zig-zag that crosses the road, doubles back on itself, and adds phantom distance.</p>
+
+      <figure>
+        <div class="fig-route">
+          <svg viewBox="0 0 1000 240" role="img" aria-label="A jagged raw GPS trace overlaid with the smooth filtered track.">
+            <polyline class="raw" points="30,170 60,150 88,182 120,138 150,118 178,156 210,92 240,112 268,72 300,100 330,66 360,122 392,146 420,124 452,162 480,134 510,116 540,92 568,66 600,48 632,84 660,54 690,76 720,100 752,82 782,124 812,104 842,146 872,114 902,138 936,154 962,92 982,66"/>
+            <path class="smooth" d="M30 165 C 130 185 150 60 250 78 C 330 92 360 180 470 150 C 560 126 560 36 680 64 C 780 86 792 168 900 132 C 944 117 968 92 982 66"/>
+          </svg>
+          <div class="fig-legend">
+            <span><i class="raw"></i>Raw 1 Hz fixes</span>
+            <span><i class="smooth"></i>Filtered &amp; simplified</span>
+          </div>
+        </div>
+        <figcaption>Same run, same coordinates. The grey line is what the hardware reported; the green line is what ships.</figcaption>
+      </figure>
+
+      <h2>Two problems, two stages</h2>
+      <p>It's tempting to reach for one clever algorithm, but "noisy GPS" is really two separate problems, and they want opposite things:</p>
+      <ul>
+        <li><strong>Each point is wrong by a little.</strong> A fix lands a few metres off where you actually were. You fix this by <em>denoising</em> — nudging each point toward where it probably should be, using how confident the hardware is.</li>
+        <li><strong>There are far too many points.</strong> A 45-minute run is ~2,700 fixes. Most sit on near-straight segments and carry no information. You fix this by <em>simplifying</em> — dropping the points that don't change the shape.</li>
+      </ul>
+      <p>So the pipeline is two stages, in order: <strong>a Kalman filter to denoise as fixes arrive</strong>, then <strong>Douglas–Peucker to simplify before you save or draw</strong>. Order matters — simplify first and you'd be throwing away points based on noise you haven't removed yet.</p>
+
+      <div class="callout">
+        <span class="clabel">Before either stage</span>
+        <p>Throw out the junk first. A fix with <code>horizontalAccuracy &lt;= 0</code> is invalid, and anything above ~50&nbsp;m is usually a cold start or a tunnel — let it through and it'll drag the filter for several seconds. Gate on accuracy before a coordinate ever reaches the pipeline.</p>
+      </div>
+
+      <h2>Stage 1 — a pragmatic Kalman filter</h2>
+      <p>A full Kalman filter models position and velocity with matrices and gets intimidating fast. For a running route you don't need most of that. The insight that makes it cheap: treat latitude and longitude as two independent 1-D signals, and let <code>horizontalAccuracy</code> — which Core Location already gives you per fix — <em>be</em> the measurement variance.</p>
+      <p>The filter carries one number besides the position: its own uncertainty, in metres². Between fixes that uncertainty <em>grows</em> (you've moved, you're less sure where you are). Each new fix <em>shrinks</em> it. The ratio of the two decides how much you trust the new reading.</p>
+
+      <pre><code>import CoreLocation
+
+/// A lightweight Kalman filter for GPS positions.
+/// Latitude and longitude are treated as independent 1-D signals whose
+/// uncertainty grows with elapsed time and shrinks with each new fix.
+final class GPSKalmanFilter {
+
+    /// Expected movement per second, in metres. Higher trusts new fixes
+    /// more (less smoothing); lower glues the track down (more smoothing).
+    private let processNoise: Double
+
+    private var variance: Double = -1          // metres²; < 0 == uninitialised
+    private var timestamp: TimeInterval = 0
+    private var lat = 0.0
+    private var lon = 0.0
+
+    init(processNoise: Double = 3.0) {
+        self.processNoise = processNoise
+    }
+
+    func process(_ location: CLLocation) -> CLLocationCoordinate2D {
+        let accuracy = max(location.horizontalAccuracy, 1)   // metres, ~1σ
+        let measurementVariance = accuracy * accuracy
+
+        // First fix: seed the filter and return it unchanged.
+        guard variance >= 0 else {
+            timestamp = location.timestamp.timeIntervalSince1970
+            lat = location.coordinate.latitude
+            lon = location.coordinate.longitude
+            variance = measurementVariance
+            return location.coordinate
+        }
+
+        // Predict: uncertainty grows with the time since the last fix.
+        let now = location.timestamp.timeIntervalSince1970
+        let dt = now - timestamp
+        if dt > 0 {
+            variance += dt * processNoise * processNoise
+            timestamp = now
+        }
+
+        // Update: blend prediction and measurement by their variances.
+        let gain = variance / (variance + measurementVariance)   // 0…1
+        lat += gain * (location.coordinate.latitude  - lat)
+        lon += gain * (location.coordinate.longitude - lon)
+        variance *= (1 - gain)
+
+        return CLLocationCoordinate2D(latitude: lat, longitude: lon)
+    }
+}</code></pre>
+
+      <p>That's the whole filter. The one knob is <code>processNoise</code>: it's the answer to "how far could the runner realistically have moved in a second?" Around 3&nbsp;m/s tracks a steady run nicely. Push it lower and the line gets glassy but lags on sharp turns; push it higher and you're barely filtering at all. Tune it against a few real GPX traces, not in the abstract.</p>
+
+      <h2>Stage 2 — Douglas–Peucker</h2>
+      <p>Now the points are honest but there are thousands of them. <a href="https://en.wikipedia.org/wiki/Ramer%E2%80%93Douglas%E2%80%93Peucker_algorithm">Ramer–Douglas–Peucker</a> is the classic way to thin a polyline while keeping its shape. It's beautifully recursive:</p>
+      <ol>
+        <li>Draw a straight line between the first and last point.</li>
+        <li>Find the point farthest from that line. If it's closer than <code>epsilon</code>, every point between the ends is redundant — drop them all.</li>
+        <li>If it's farther, that point is a real corner. Keep it, and recurse on the two halves it splits.</li>
+      </ol>
+
+      <pre><code>import CoreLocation
+
+enum RouteSimplifier {
+
+    /// Ramer–Douglas–Peucker. `epsilon` is the maximum deviation we'll
+    /// tolerate, in metres — points closer to the line than this get dropped.
+    static func simplify(_ points: [CLLocationCoordinate2D],
+                         epsilon: Double = 3) -> [CLLocationCoordinate2D] {
+        guard points.count > 2 else { return points }
+
+        // Farthest point from the line between the two endpoints.
+        var maxDistance = 0.0
+        var index = 0
+        for i in 1..<(points.count - 1) {
+            let d = perpendicularDistance(points[i], from: points.first!, to: points.last!)
+            if d > maxDistance { maxDistance = d; index = i }
+        }
+
+        // Beyond epsilon → it's a real corner: keep it and recurse.
+        guard maxDistance > epsilon else {
+            return [points.first!, points.last!]
+        }
+        let left  = simplify(Array(points[0...index]), epsilon: epsilon)
+        let right = simplify(Array(points[index...]),  epsilon: epsilon)
+        return Array(left.dropLast()) + right        // drop the shared join point
+    }
+
+    /// Distance from `p` to the segment a→b, in metres, via a local
+    /// equirectangular projection — plenty accurate at running scale.
+    private static func perpendicularDistance(_ p: CLLocationCoordinate2D,
+                                              from a: CLLocationCoordinate2D,
+                                              to b: CLLocationCoordinate2D) -> Double {
+        let mPerLat = 111_320.0
+        let mPerLon = 111_320.0 * cos(a.latitude * .pi / 180)
+
+        let ax = a.longitude * mPerLon, ay = a.latitude * mPerLat
+        let bx = b.longitude * mPerLon, by = b.latitude * mPerLat
+        let px = p.longitude * mPerLon, py = p.latitude * mPerLat
+
+        let dx = bx - ax, dy = by - ay
+        let lenSq = dx * dx + dy * dy
+        guard lenSq > 0 else { return hypot(px - ax, py - ay) }
+
+        // Project p onto the segment, clamped to its endpoints.
+        let t = max(0, min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq))
+        let cx = ax + t * dx, cy = ay + t * dy
+        return hypot(px - cx, py - cy)
+    }
+}</code></pre>
+
+      <p>The projection bit deserves a word: comparing distances in raw degrees is wrong, because a degree of longitude shrinks as you move away from the equator. Multiplying by metres-per-degree (and scaling longitude by <code>cos(latitude)</code>) puts both axes in metres, so <code>epsilon</code> means an actual physical distance. At the span of a single run the curvature of the Earth doesn't matter, so this flat approximation is fine.</p>
+
+      <h2>Wiring it together</h2>
+      <p>Live, the filter runs inside the location callback — denoise each fix the moment it arrives, so the in-progress line on the watch is already clean. The simplifier runs once, later, when you persist or export the run:</p>
+
+      <pre><code>let filter = GPSKalmanFilter()
+var track: [CLLocationCoordinate2D] = []
+
+func locationManager(_ manager: CLLocationManager,
+                     didUpdateLocations locations: [CLLocation]) {
+    for fix in locations where (0...50).contains(fix.horizontalAccuracy) {
+        track.append(filter.process(fix))       // gate, then denoise, live
+    }
+}
+
+// On save / export: thin the track for storage and drawing.
+let route = RouteSimplifier.simplify(track, epsilon: 3)</code></pre>
+
+      <h2>What it bought me</h2>
+      <p>On a typical city run the two stages together cut the point count by 80–90% while the line stops crossing the road. Concretely, that's:</p>
+      <ul>
+        <li><strong>A route that reads as the run you did</strong> — the headline feature, and the reason people screenshot it.</li>
+        <li><strong>Cheaper <code>MKPolyline</code> rendering.</strong> Fewer vertices means the overlay redraws without a hitch while you pan and zoom.</li>
+        <li><strong>Smaller payloads.</strong> The Strava export and anything you sync shrink with the point count — a free win on storage and bandwidth.</li>
+      </ul>
+      <p>Two cautions from shipping it. Don't over-smooth: a low <code>processNoise</code> plus a fat <code>epsilon</code> will happily erase a real hairpin switchback. And keep the filter for the <em>map</em> — compute distance, pace, and splits from the raw, gated fixes, because simplification deliberately throws away the very wiggles that distance is measured from.</p>
+
+      <p>That's the whole pipeline: gate on accuracy, Kalman to denoise, Douglas–Peucker to simplify. Three small, independent pieces — each easy to test on a recorded GPX — that together turn a wrist into something you'd actually put on a map.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="../index.html#writing" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

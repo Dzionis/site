@@ -1,0 +1,582 @@
+<!DOCTYPE html>
+<!--
+  Dzionis Brek — personal site (static, single file). Content filled from CV/LinkedIn.
+  STILL OPTIONAL TO TWEAK:
+    • App roster shows names only (CV gave no descriptions) — add one-liners if you like.
+    • Phone number is shown publicly in #contact — remove the tel: link if you'd rather not.
+    • Blog: posts are standalone pages in /writing (styles in /assets/blog.css).
+      Add one by copying writing/_TEMPLATE.html — full steps in WRITING.md.
+      Remaining "Draft" items in #writing are teasers with no page yet.
+  Deploy: copy the folder (index.html + assets/ + writing/) → GitHub Pages / Vercel / Netlify.
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dzionis Brek — Senior iOS Engineer</title>
+<meta name="description" content="Dzionis Brek — senior iOS engineer in Warsaw. 10+ years, 50+ App Store apps, from REST clients to geolocation and AR. Building and shipping iOS products end to end." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================== TOKENS ============================== */
+  :root{
+    --ink:#0B0E0D;
+    --panel:#121715;
+    --panel-2:#161D1A;
+    --line:#232C28;
+    --line-soft:#1A211E;
+    --mist:#7E8A84;
+    --mist-2:#586460;
+    --paper:#E9EEEB;
+    --paper-dim:#BFC9C4;
+    --signal:#33D69A;
+    --signal-dim:rgba(51,214,154,.13);
+    --amber:#E6A23C;
+
+    --display:"Space Grotesk",system-ui,sans-serif;
+    --body:"Hanken Grotesk",system-ui,sans-serif;
+    --mono:"JetBrains Mono",ui-monospace,monospace;
+
+    --maxw:1080px;
+    --gutter:clamp(20px,5vw,72px);
+  }
+
+  /* ============================== RESET ============================== */
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{
+    background:var(--ink);
+    color:var(--paper-dim);
+    font-family:var(--body);
+    font-size:clamp(1rem,1rem + .1vw,1.0625rem);
+    line-height:1.62;
+    -webkit-font-smoothing:antialiased;
+    text-rendering:optimizeLegibility;
+    overflow-x:hidden;
+    background-image:
+      radial-gradient(circle at 1px 1px, rgba(126,138,132,.05) 1px, transparent 0);
+    background-size:38px 38px;
+  }
+  a{color:inherit;text-decoration:none}
+  img,svg{display:block}
+  ::selection{background:var(--signal);color:var(--ink)}
+
+  /* ============================== TYPE HELPERS ============================== */
+  .mono{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist)}
+  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--signal);display:inline-flex;align-items:center;gap:.6em}
+  .eyebrow::before{content:"//";color:var(--mist-2)}
+  h1,h2,h3{font-family:var(--display);color:var(--paper);font-weight:600;line-height:1.04;letter-spacing:-.02em}
+
+  /* ============================== LAYOUT ============================== */
+  .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--gutter)}
+  section{padding-block:clamp(72px,11vw,140px);position:relative}
+  .divider{border-top:1px solid var(--line-soft)}
+
+  /* ============================== NAV ============================== */
+  header.nav{
+    position:sticky;top:0;z-index:50;
+    backdrop-filter:blur(10px);
+    background:color-mix(in srgb, var(--ink) 78%, transparent);
+    border-bottom:1px solid var(--line-soft);
+  }
+  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:14px var(--gutter);display:flex;align-items:center;justify-content:space-between;gap:16px}
+  .brand{font-family:var(--mono);font-size:.82rem;letter-spacing:.04em;color:var(--paper);display:inline-flex;align-items:center;gap:.6em;white-space:nowrap}
+  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--signal);box-shadow:0 0 10px var(--signal)}
+  .nav-links{display:flex;gap:clamp(14px,2.4vw,30px);align-items:center}
+  .nav-links a{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);position:relative;padding-block:6px;transition:color .2s}
+  .nav-links a:hover,.nav-links a.active{color:var(--paper)}
+  .nav-links a.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--signal)}
+  @media(max-width:640px){ .nav-links a:nth-child(2),.nav-links a:nth-child(4),.nav-links a:nth-child(5){display:none} }
+
+  /* ============================== HERO ============================== */
+  .hero{padding-top:clamp(54px,10vw,104px);padding-bottom:0}
+  .hero h1{font-size:clamp(2.7rem,8.6vw,6rem);font-weight:700;margin:.34em 0 .28em}
+  .hero h1 .tail{color:var(--signal)}
+  .lede{max-width:52ch;font-size:clamp(1.05rem,1.4vw,1.22rem);color:var(--paper-dim)}
+  .lede b{color:var(--paper);font-weight:600}
+
+  .readouts{display:flex;flex-wrap:wrap;gap:1px;margin-top:clamp(34px,5vw,52px);background:var(--line-soft);border:1px solid var(--line-soft);border-radius:2px;overflow:hidden}
+  .readout{background:var(--ink);padding:16px 22px;flex:1 1 150px;min-width:140px}
+  .readout .k{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist-2)}
+  .readout .v{font-family:var(--display);font-weight:600;color:var(--paper);font-size:1.18rem;margin-top:6px;letter-spacing:-.01em}
+  .readout .v small{font-family:var(--mono);font-weight:500;font-size:.72rem;color:var(--mist);letter-spacing:.04em}
+
+  /* route signature */
+  .route-band{margin-top:clamp(44px,7vw,80px);position:relative}
+  .route-band svg{width:100%;height:auto;overflow:visible}
+  .route-line{fill:none;stroke:var(--signal);stroke-width:2;stroke-linecap:round;
+    stroke-dasharray:1;stroke-dashoffset:1;animation:draw 2.4s cubic-bezier(.7,0,.25,1) .25s forwards;
+    filter:drop-shadow(0 0 6px rgba(51,214,154,.4))}
+  .route-ghost{fill:none;stroke:var(--line);stroke-width:2;stroke-linecap:round}
+  @keyframes draw{to{stroke-dashoffset:0}}
+  .node{fill:var(--ink);stroke-width:2}
+  .node.start{stroke:var(--signal)}
+  .node.finish{stroke:var(--amber)}
+  .node.pulse{animation:pulse 2.4s ease-in-out 1.6s infinite}
+  @keyframes pulse{0%,100%{r:5}50%{r:8;opacity:.7}}
+  .route-tag{font-family:var(--mono);font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;fill:var(--mist)}
+  .scroll-cue{margin-top:30px;display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mist-2)}
+  .scroll-cue .bar{width:34px;height:1px;background:var(--mist-2);position:relative;overflow:hidden}
+  .scroll-cue .bar::after{content:"";position:absolute;inset:0;background:var(--signal);transform:translateX(-100%);animation:slide 2.6s ease-in-out infinite}
+  @keyframes slide{0%{transform:translateX(-100%)}55%{transform:translateX(0)}100%{transform:translateX(100%)}}
+
+  /* ============================== SECTION HEAD ============================== */
+  .sec-head{display:flex;flex-direction:column;gap:14px;margin-bottom:clamp(38px,5vw,56px)}
+  .sec-head h2{font-size:clamp(1.7rem,3.4vw,2.5rem)}
+  .sec-head p{max-width:58ch;color:var(--mist)}
+
+  /* ============================== WORK ============================== */
+  .work-grid{display:grid;gap:18px}
+  .card{
+    position:relative;background:var(--panel);border:1px solid var(--line);border-radius:4px;
+    padding:clamp(22px,3vw,32px);transition:border-color .25s, transform .25s, background .25s;
+  }
+  .card:hover{border-color:color-mix(in srgb,var(--signal) 55%,var(--line));transform:translateY(-3px);background:var(--panel-2)}
+  .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
+  .card h3{font-size:clamp(1.3rem,2.4vw,1.7rem)}
+  .card.lead h3{font-size:clamp(1.7rem,3.4vw,2.3rem)}
+  .card .desc{margin-top:12px;color:var(--paper-dim);max-width:62ch}
+  .pill{font-family:var(--mono);font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;display:inline-flex;align-items:center;gap:.55em;color:var(--mist);border:1px solid var(--line);border-radius:99px;padding:5px 11px;white-space:nowrap}
+  .pill .d{width:7px;height:7px;border-radius:50%}
+  .pill.live .d{background:var(--signal);box-shadow:0 0 8px var(--signal)}
+  .pill.beta .d{background:var(--amber);box-shadow:0 0 8px var(--amber)}
+  .pill.ship .d{background:var(--mist-2)}
+  .meta-row{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px}
+  .chip{font-family:var(--mono);font-size:.68rem;letter-spacing:.04em;color:var(--paper-dim);background:var(--ink);border:1px solid var(--line-soft);border-radius:3px;padding:5px 9px}
+  .notes{margin-top:20px;display:grid;gap:9px;border-top:1px solid var(--line-soft);padding-top:18px}
+  .notes li{list-style:none;display:flex;gap:12px;align-items:flex-start;font-size:.95rem;color:var(--paper-dim)}
+  .notes li::before{content:"↳";color:var(--signal);font-family:var(--mono);flex:none;line-height:1.5}
+
+  /* app roster */
+  .roster{display:grid;gap:24px;margin-top:6px}
+  .roster-group .meta-row{margin-top:11px}
+  .roster-group .chip{color:var(--paper);font-size:.74rem;padding:7px 12px;border-color:var(--line)}
+
+  /* ============================== EXPERIENCE ============================== */
+  .timeline{position:relative;display:grid;gap:0;border-left:1px solid var(--line);margin-left:6px}
+  .tl{position:relative;padding:0 0 clamp(30px,4.5vw,44px) clamp(26px,4vw,40px)}
+  .tl:last-child{padding-bottom:0}
+  .tl::before{content:"";position:absolute;left:-5px;top:6px;width:9px;height:9px;border-radius:50%;background:var(--ink);border:2px solid var(--signal)}
+  .tl.past::before{border-color:var(--mist-2)}
+  .tl .when{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--signal)}
+  .tl.past .when{color:var(--mist)}
+  .tl h3{font-size:1.22rem;margin:9px 0 4px}
+  .tl .org{font-family:var(--mono);font-size:.76rem;color:var(--mist);letter-spacing:.02em}
+  .tl p{margin-top:11px;color:var(--paper-dim);max-width:62ch;font-size:.97rem}
+  .tl .meta-row{margin-top:14px}
+
+  /* ============================== SKILLS ============================== */
+  .skills-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
+  .sk{background:var(--ink);padding:20px 22px;transition:background .25s}
+  .sk:hover{background:var(--panel)}
+  .sk-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mist);display:flex;align-items:center;gap:.6em}
+  .sk-label::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--signal);flex:none;box-shadow:0 0 7px var(--signal);opacity:.85}
+  .sk-items{margin-top:11px;color:var(--paper-dim);font-size:.92rem;line-height:1.55}
+
+  /* ============================== WRITING ============================== */
+  .posts{display:grid;gap:0;border-top:1px solid var(--line-soft)}
+  .post{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 28px;align-items:baseline;
+    padding:clamp(20px,3vw,26px) 0;border-bottom:1px solid var(--line-soft);transition:padding-left .25s}
+  .post:hover{padding-left:14px}
+  .post .ptitle{font-family:var(--display);font-weight:500;color:var(--paper);font-size:clamp(1.1rem,2vw,1.32rem);letter-spacing:-.01em;transition:color .2s}
+  .post:hover .ptitle{color:var(--signal)}
+  .post .dek{grid-column:1/2;color:var(--mist);font-size:.95rem;margin-top:4px;max-width:62ch}
+  .post .pmeta{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist-2);white-space:nowrap;text-align:right}
+  @media(max-width:560px){ .post{grid-template-columns:1fr} .post .pmeta{text-align:left} }
+
+  /* ============================== ABOUT ============================== */
+  .about-grid{display:grid;grid-template-columns:1.4fr .9fr;gap:clamp(28px,5vw,64px);align-items:start}
+  @media(max-width:760px){ .about-grid{grid-template-columns:1fr} }
+  .about p{margin-bottom:1.1em;color:var(--paper-dim)}
+  .about p b{color:var(--paper);font-weight:600}
+  .facts{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
+  .fact{background:var(--ink);padding:15px 18px}
+  .fact .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mist-2)}
+  .fact .v{color:var(--paper);font-size:.95rem;margin-top:5px}
+
+  /* ============================== CONTACT ============================== */
+  .contact{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:clamp(30px,5vw,56px)}
+  .contact h2{font-size:clamp(1.9rem,4.5vw,3rem);max-width:16ch}
+  .contact .lede{margin-top:16px;color:var(--mist);max-width:52ch}
+  .links{margin-top:clamp(26px,4vw,38px);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
+  .link{background:var(--panel);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:background .2s,color .2s}
+  .link:hover{background:var(--panel-2)}
+  .link .lbl{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--paper)}
+  .link .sub{font-family:var(--mono);font-size:.64rem;color:var(--mist);margin-top:4px;letter-spacing:.02em;text-transform:none}
+  .link .arr{color:var(--mist);transition:transform .2s,color .2s;font-family:var(--mono)}
+  .link:hover .arr{transform:translate(2px,-2px);color:var(--signal)}
+
+  /* ============================== FOOTER ============================== */
+  footer{border-top:1px solid var(--line-soft);padding:30px var(--gutter)}
+  .foot-inner{max-width:var(--maxw);margin:0 auto;display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
+  .foot-inner span{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist-2)}
+  .foot-inner a{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);transition:color .2s}
+  .foot-inner a:hover{color:var(--signal)}
+
+  /* ============================== MOTION / A11Y ============================== */
+  .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+  .reveal.in{opacity:1;transform:none}
+  :focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:2px}
+  @media(prefers-reduced-motion:reduce){
+    html{scroll-behavior:auto}
+    .reveal{opacity:1;transform:none;transition:none}
+    .route-line{animation:none;stroke-dashoffset:0}
+    .node.pulse{animation:none}
+    .scroll-cue .bar::after{animation:none;transform:translateX(0)}
+  }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <nav class="nav-links" aria-label="Sections">
+      <a href="#work">Work</a>
+      <a href="#experience">Experience</a>
+      <a href="#skills">Skills</a>
+      <a href="#writing">Writing</a>
+      <a href="#about">About</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <section class="hero wrap">
+    <span class="eyebrow">Senior iOS Engineer · Warsaw, PL</span>
+    <h1>Ten years of iOS.<br>Fifty-plus <span class="tail">apps.</span></h1>
+    <p class="lede">I'm Dzionis — a senior iOS engineer in Warsaw. Over <b>10+ years</b> I've designed and shipped <b>50+ App Store apps</b>, from simple REST clients to geolocation and AR. I've led iOS teams, mentored juniors, and these days I also build and ship my own products.</p>
+
+    <div class="readouts" role="list" aria-label="Quick facts">
+      <div class="readout" role="listitem"><div class="k">iOS experience</div><div class="v">10+&nbsp;<small>yrs</small></div></div>
+      <div class="readout" role="listitem"><div class="k">In software</div><div class="v">15+&nbsp;<small>yrs</small></div></div>
+      <div class="readout" role="listitem"><div class="k">Shipped</div><div class="v">50+&nbsp;<small>apps</small></div></div>
+      <div class="readout" role="listitem"><div class="k">Based</div><div class="v">Warsaw, PL</div></div>
+    </div>
+
+    <!-- SIGNATURE: smoothed GPS route -->
+    <div class="route-band" aria-hidden="true">
+      <svg viewBox="0 0 1000 220" role="img">
+        <path class="route-ghost" d="M30 165 C 130 185 150 60 250 78 C 330 92 360 180 470 150 C 560 126 560 36 680 64 C 780 86 792 168 900 132 C 944 117 968 92 982 66"/>
+        <path class="route-line" pathLength="1" d="M30 165 C 130 185 150 60 250 78 C 330 92 360 180 470 150 C 560 126 560 36 680 64 C 780 86 792 168 900 132 C 944 117 968 92 982 66"/>
+        <circle class="node start" cx="30" cy="165" r="5.5"/>
+        <circle class="node finish pulse" cx="982" cy="66" r="5.5"/>
+        <text class="route-tag" x="44" y="190">2014</text>
+        <text class="route-tag" x="900" y="50" text-anchor="end">2026</text>
+      </svg>
+    </div>
+
+    <div class="scroll-cue"><span class="bar"></span>scroll</div>
+  </section>
+
+  <!-- ================= WORK ================= -->
+  <section id="work" class="wrap divider">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Work</span>
+      <h2>What I'm building, and what I've shipped.</h2>
+      <p>End-to-end iOS — from the first Xcode project to the App Store listing. Here's what I'm working on now, plus highlights from a decade of releases.</p>
+    </div>
+
+    <div class="work-grid">
+
+      <p class="mono reveal" style="margin:2px 0 -2px;color:var(--mist-2)">Now — building solo</p>
+
+      <!-- FEATURED -->
+      <article class="card lead reveal">
+        <div class="top">
+          <h3>iRunning</h3>
+          <span class="pill beta"><span class="d"></span>Beta · TestFlight</span>
+        </div>
+        <p class="desc">Interval running for Apple Watch. Build a workout, run it from your wrist, and review the route afterward. Watch-first, with no subscription wall.</p>
+        <div class="meta-row">
+          <span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">WorkoutKit</span><span class="chip">HealthKit</span><span class="chip">WatchConnectivity</span><span class="chip">MapKit</span>
+        </div>
+        <ul class="notes">
+          <li>GPS route smoothing with a Kalman filter and Douglas–Peucker simplification, so wrist traces stay clean.</li>
+          <li>Real-time heart rate streamed from the watch to the phone during a live session.</li>
+          <li>One-tap Strava export over OAuth 2.0.</li>
+        </ul>
+      </article>
+
+      <!-- SECONDARY -->
+      <article class="card reveal">
+        <div class="top">
+          <h3>Currency Converter</h3>
+          <span class="pill live"><span class="d"></span>Live · App Store</span>
+        </div>
+        <p class="desc">Fast conversion across fiat and crypto with live rates — a small, focused app that doubled as a real growth experiment.</p>
+        <div class="meta-row">
+          <span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">async/await</span><span class="chip">StoreKit</span>
+        </div>
+        <ul class="notes">
+          <li>Live rates from CoinGecko &amp; Binance.</li>
+          <li>Full ASO program: 200+ Apple Search Ads keywords and icon A/B tests via custom product pages.</li>
+        </ul>
+      </article>
+
+      <!-- CAREER ROSTER -->
+      <div class="reveal">
+        <p class="mono" style="margin:34px 0 20px;color:var(--mist-2)">Highlights from 50+ shipped App Store apps</p>
+        <div class="roster">
+          <div class="roster-group">
+            <span class="mono" style="color:var(--mist)">ASAP Visuals · 2022–2026</span>
+            <div class="meta-row">
+              <span class="chip">izi AI</span><span class="chip">izi Type</span><span class="chip">PartyCam</span><span class="chip">Edith</span><span class="chip">Templates</span>
+            </div>
+          </div>
+          <div class="roster-group">
+            <span class="mono" style="color:var(--mist)">System Technologies · 2018–2022</span>
+            <div class="meta-row">
+              <span class="chip">Drive&amp;Pay</span><span class="chip">Tix</span><span class="chip">Дзякуй</span><span class="chip">Звезда</span>
+            </div>
+          </div>
+        </div>
+        <ul class="notes" style="margin-top:24px">
+          <li>Full-stack when needed: I built PartyCam's backend in Python on Firebase (Firestore + Cloud Functions), plus PHP chat backends on other projects.</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ================= EXPERIENCE ================= -->
+  <section id="experience" class="wrap divider">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Experience</span>
+      <h2>A decade-plus, shipping iOS.</h2>
+      <p>From web and backend beginnings to leading an iOS team and going independent — releasing apps the whole way.</p>
+    </div>
+
+    <div class="timeline">
+      <div class="tl reveal">
+        <div class="when">2026 — Present</div>
+        <h3>Independent iOS Developer</h3>
+        <div class="org">Self-employed (JDG) · Warsaw</div>
+        <p>Building and shipping my own products — iRunning chief among them — and running the growth side myself, from App Store optimization to release strategy.</p>
+        <div class="meta-row"><span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">watchOS</span><span class="chip">ASO</span></div>
+      </div>
+
+      <div class="tl reveal">
+        <div class="when">Jan 2022 — Apr 2026</div>
+        <h3>iOS Developer</h3>
+        <div class="org">ASAP Visuals, Inc. · Warsaw</div>
+        <p>Developed and supported five App Store apps (izi AI, izi Type, PartyCam, Edith, Templates) across internal and outsourced projects, with ongoing updates and refactoring — and built backend services too: PHP for chat, Python on Firebase for PartyCam.</p>
+        <div class="meta-row"><span class="chip">Swift</span><span class="chip">UIKit</span><span class="chip">PHP</span><span class="chip">Python</span><span class="chip">Firebase</span></div>
+      </div>
+
+      <div class="tl reveal">
+        <div class="when">Aug 2018 — Jul 2022</div>
+        <h3>Lead iOS Developer</h3>
+        <div class="org">System Technologies · Minsk</div>
+        <p>Led the iOS team — architecture, project management, mentoring junior developers, and working directly with foreign clients. Shipped 5+ App Store apps (Drive&amp;Pay, Tix, Дзякуй, Звезда and others) and helped run the company's internal education program of weekly talks and workshops.</p>
+        <div class="meta-row"><span class="chip">iOS Lead</span><span class="chip">Architecture</span><span class="chip">Mentoring</span><span class="chip">App Store</span></div>
+      </div>
+
+      <div class="tl past reveal">
+        <div class="when">Jun 2017 — Jun 2018</div>
+        <h3>iOS Software Developer</h3>
+        <div class="org">EffectiveSoft Corporation · Belarus</div>
+        <p>Built and released three App Store apps on long-term client projects, with regular updates and refactoring.</p>
+      </div>
+
+      <div class="tl past reveal">
+        <div class="when">Nov 2015 — Apr 2017</div>
+        <h3>iOS Software Developer</h3>
+        <div class="org">Goozix</div>
+        <p>Shipped 10+ App Store apps, owned architecture on iOS projects, mentored juniors, and contributed to internal education — workshops and news digests.</p>
+      </div>
+
+      <div class="tl past reveal">
+        <div class="when">Feb 2014 — Nov 2014</div>
+        <h3>iOS Developer</h3>
+        <div class="org">Wellnuts Creative Group · Minsk</div>
+        <p>Prototyped and shipped 5+ iOS apps for the agency and its clients.</p>
+      </div>
+
+      <div class="tl past reveal">
+        <div class="when">2011 — 2014</div>
+        <h3>Web &amp; Backend Developer</h3>
+        <div class="org">Maksis · Qulix Systems</div>
+        <p>Where it started: Yii-based CMS, Yandex widgets, social-promotion tools, and backends for mobile apps.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= SKILLS ================= -->
+  <section id="skills" class="wrap divider">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Skills</span>
+      <h2>The full toolkit.</h2>
+      <p>A decade of iOS, from language internals to monetization and CI/CD — the stack I reach for, end to end.</p>
+    </div>
+
+    <div class="skills-grid reveal">
+      <div class="sk">
+        <div class="sk-label">Languages</div>
+        <div class="sk-items">Swift (incl. Swift 6), Objective-C</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">UI</div>
+        <div class="sk-items">UIKit, SwiftUI, WidgetKit (widgets, Live Activities), watchOS (WatchKit / SwiftUI), Auto Layout, Core Animation</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Architecture</div>
+        <div class="sk-items">MVVM, Redux / Unidirectional Data Flow, Clean Architecture, modular design (SPM)</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Concurrency &amp; Reactive</div>
+        <div class="sk-items">Swift Concurrency (async/await, actors), GCD</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Graphics &amp; Media</div>
+        <div class="sk-items">Core Image (custom filter kernels), AVFoundation / AVCapture, Camera Control API, Vision, Core ML, color management</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Monetization</div>
+        <div class="sk-items">StoreKit 2, RevenueCat, Adapty, Apphud, paywall &amp; pricing A/B testing, subscription analytics (LTV, retention, conversion)</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Analytics &amp; Attribution</div>
+        <div class="sk-items">Firebase (Analytics, Crashlytics, Remote Config), Amplitude, AppsFlyer, Adjust, Facebook</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Data &amp; Networking</div>
+        <div class="sk-items">Core Data, SwiftData, Realm, Keychain, URLSession, REST, Codable</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Hardware &amp; IoT</div>
+        <div class="sk-items">Core Bluetooth (BLE), iBeacon, Core Location, HealthKit</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Design Collaboration</div>
+        <div class="sk-items">Figma, Zeplin, Sketch, design-to-code workflow, attention to UI detail &amp; UX</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">Testing</div>
+        <div class="sk-items">XCTest, Unit / UI testing</div>
+      </div>
+      <div class="sk">
+        <div class="sk-label">CI/CD &amp; Tooling</div>
+        <div class="sk-items">Fastlane, Xcode Cloud, Git, SPM, CocoaPods, App Store Connect, TestFlight, Instruments</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= WRITING ================= -->
+  <section id="writing" class="wrap divider">
+    <div class="sec-head reveal">
+      <span class="eyebrow">Writing</span>
+      <h2>Notes from the build.</h2>
+      <p>Short, practical write-ups on the things I hit while shipping. First full posts are going up now — more on the way.</p>
+    </div>
+
+    <!--
+      POST LIST — newest first. To publish a post:
+        1) create the page from writing/_TEMPLATE.html  (see WRITING.md)
+        2) copy an <a class="post"> block below, inside the START/END markers,
+           point href at the new file, and set the title / date / dek.
+      Items still marked "Draft · 2026" are teasers with no page yet.
+    -->
+    <div class="posts reveal">
+      <!-- POST-LIST:START -->
+      <a class="post" href="writing/smoothing-noisy-gps.html">
+        <span class="ptitle">Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app</span>
+        <span class="pmeta">Jun 2026 · 8 min</span>
+        <span class="dek">Why raw watch GPS jitters, and the two-step pipeline I use to get a clean route.</span>
+      </a>
+      <a class="post" href="#writing">
+        <span class="ptitle">Watch-first, not watch-also: designing intervals for the wrist</span>
+        <span class="pmeta">Draft · 2026</span>
+        <span class="dek">Treating the watch as the primary screen changes nearly every UI decision.</span>
+      </a>
+      <a class="post" href="#writing">
+        <span class="ptitle">Fifty apps in: what actually makes iOS code last</span>
+        <span class="pmeta">Draft · 2026</span>
+        <span class="dek">Lessons from a decade of shipping — and, harder, maintaining — App Store apps.</span>
+      </a>
+      <a class="post" href="#writing">
+        <span class="ptitle">ASO for a tiny app: 200 keywords and what moved installs</span>
+        <span class="pmeta">Draft · 2026</span>
+        <span class="dek">A small currency app as a sandbox for keywords, icons and custom product pages.</span>
+      </a>
+      <!-- POST-LIST:END -->
+    </div>
+  </section>
+
+  <!-- ================= ABOUT ================= -->
+  <section id="about" class="wrap divider">
+    <div class="sec-head reveal"><span class="eyebrow">About</span></div>
+    <div class="about-grid">
+      <div class="about reveal">
+        <p>I'm a senior iOS engineer based near Warsaw, with <b>10+ years building for the platform</b> and 15+ years in software overall. I've shipped <b>50+ apps to the App Store</b> — from straightforward REST clients to geolocation and AR — for startups and mid-size companies.</p>
+        <p>Along the way I led an iOS team, owned architecture, mentored junior developers, and worked directly with international clients. When a product needed it, I went full-stack — building backends in <b>PHP and Python on Firebase</b>.</p>
+        <p>These days I build and ship my own products, like iRunning, and stay close to the parts beyond the code — App Store optimization, growth, and the craft of a release people actually keep. I work across <b>English, Polish and Russian</b>.</p>
+      </div>
+      <aside class="facts reveal" aria-label="At a glance">
+        <div class="fact"><div class="k">Based in</div><div class="v">Warsaw, Poland</div></div>
+        <div class="fact"><div class="k">Experience</div><div class="v">10+ yrs iOS · 15+ yrs software</div></div>
+        <div class="fact"><div class="k">Shipped</div><div class="v">50+ App Store apps</div></div>
+        <div class="fact"><div class="k">Core</div><div class="v">Swift, SwiftUI, UIKit, Concurrency</div></div>
+        <div class="fact"><div class="k">Also</div><div class="v">HealthKit, StoreKit, MapKit, AR, geolocation</div></div>
+        <div class="fact"><div class="k">Backend</div><div class="v">PHP, Python, Firebase</div></div>
+        <div class="fact"><div class="k">Languages</div><div class="v">EN · PL · RU</div></div>
+        <div class="fact"><div class="k">Education</div><div class="v">BSUIR — Computer Software Eng.</div></div>
+        <div class="fact"><div class="k">Certification</div><div class="v">Data-driven Product Mgmt · GoPractice!</div></div>
+      </aside>
+    </div>
+  </section>
+
+  <!-- ================= CONTACT ================= -->
+  <section id="contact" class="wrap divider">
+    <div class="contact reveal">
+      <span class="eyebrow">Contact</span>
+      <h2 style="margin-top:14px">Have an iOS idea, or hiring?</h2>
+      <p class="lede">Senior iOS engineer, open to strong product work, contracts and collaborations. Quickest ways to reach me:</p>
+      <div class="links">
+        <a class="link" href="mailto:bartwader@gmail.com"><span><span class="lbl">Email</span><span class="sub">bartwader@gmail.com</span></span><span class="arr">↗</span></a>
+        <a class="link" href="https://www.linkedin.com/in/dzionis-brek" target="_blank" rel="noopener"><span><span class="lbl">LinkedIn</span><span class="sub">in/dzionis-brek</span></span><span class="arr">↗</span></a>
+        <a class="link" href="https://apps.apple.com/us/developer/dzionis-brek/id525602569" target="_blank" rel="noopener"><span><span class="lbl">App Store</span><span class="sub">Dzionis Brek</span></span><span class="arr">↗</span></a>
+        <a class="link" href="tel:+48517399929"><span><span class="lbl">Phone</span><span class="sub">+48 517 399 929</span></span><span class="arr">↗</span></a>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="#top">Back to top ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!reduce && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
+    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
+  } else {
+    document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
+  }
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('.nav-links a'));
+  var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function setActive(){
+    var pos = window.scrollY + 120, current = sections[0];
+    sections.forEach(function(s){ if(s && s.offsetTop <= pos) current = s; });
+    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#' + (current && current.id)); });
+  }
+  window.addEventListener('scroll', setActive, { passive:true });
+  setActive();
+</script>
+</body>
+</html>

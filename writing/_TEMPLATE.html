@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<!--
+  ┌──────────────────────────────────────────────────────────────────────┐
+  │  NEW BLOG POST — copy this file, don't edit it in place.               │
+  │                                                                        │
+  │  1. cp writing/_TEMPLATE.html writing/your-post-slug.html              │
+  │       (slug = lowercase, words-with-dashes, no spaces — it's the URL)  │
+  │  2. Edit everything marked  EDIT:  below — <title>, the meta tags,     │
+  │     the <h1>, the date/read-time, the tags, and the <article> body.    │
+  │  3. Add one <a class="post"> line to index.html, inside the            │
+  │       <!-- POST-LIST:START --> … <!-- POST-LIST:END --> block.         │
+  │  4. Deploy: copy the folder up (or push). No build step.               │
+  │                                                                        │
+  │  Styling lives in ../assets/blog.css — you never write CSS here.       │
+  │  Full instructions: WRITING.md                                         │
+  └──────────────────────────────────────────────────────────────────────┘
+-->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- EDIT: title + description (description shows in search results / link previews) -->
+<title>EDIT — Post title · Dzionis Brek</title>
+<meta name="description" content="EDIT — one-sentence summary of the post." />
+<!-- Open Graph: how the link looks when shared. EDIT the title/description/url. -->
+<meta property="og:type" content="article" />
+<meta property="og:title" content="EDIT — Post title" />
+<meta property="og:description" content="EDIT — one-sentence summary of the post." />
+<meta property="og:url" content="https://dzionis.by/writing/your-post-slug.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="../index.html#writing" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <!-- EDIT: the kicker — e.g. a project + topic -->
+      <span class="eyebrow">Project · Topic</span>
+      <!-- EDIT: the headline -->
+      <h1>EDIT — your post title goes here</h1>
+      <div class="post-meta">
+        <!-- EDIT: publish date + reading time -->
+        <span>Mon DD, YYYY</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>0 min read</span>
+      </div>
+      <div class="post-tags">
+        <!-- EDIT: a few tags, or delete this block -->
+        <span class="chip">Swift</span>
+        <span class="chip">Tag</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <!-- EDIT: opening line, set bigger as the lede -->
+      <p class="lede-text">EDIT — one or two sentences that pull the reader in.</p>
+
+      <p>EDIT — body paragraph. Write in Markdown-ish HTML: <strong>bold</strong>,
+        <em>italic</em>, <a href="#">links</a>, and <code>inlineCode()</code> all work.</p>
+
+      <h2>A section heading</h2>
+      <p>EDIT — more prose.</p>
+
+      <ul>
+        <li>A bullet.</li>
+        <li>Another bullet.</li>
+      </ul>
+
+      <h3>A sub-heading</h3>
+      <p>EDIT — prose with a code block:</p>
+
+      <pre><code>// EDIT — code block (no syntax highlighting, by design)
+func example() {
+    print("Hello")
+}</code></pre>
+
+      <blockquote><p>EDIT — a pull quote or an aside.</p></blockquote>
+
+      <div class="callout">
+        <span class="clabel">Note</span>
+        <p>EDIT — a highlighted callout for a caveat or tip. Delete if unused.</p>
+      </div>
+
+      <p>EDIT — closing thought.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="../index.html#writing" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  // Year, and a thin scroll-progress bar at the top. Nothing else needed.
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

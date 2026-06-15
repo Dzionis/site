@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"=== runtimes ===\" ; node -v 2>/dev/null && echo \"node: yes\" || echo \"node: no\" ; python3 --version 2>/dev/null || echo \"python3: no\" ; echo ; echo \"=== tts-blog \\(sibling\\) ===\" ; ls -la ../../tts-blog 2>/dev/null | head -40)",
+      "Bash(lsof -nP -iTCP:8765 -sTCP:LISTEN)",
+      "Bash(kill 47641)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
