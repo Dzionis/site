@@ -103,20 +103,15 @@
   .readout .v{font-family:var(--display);font-weight:600;color:var(--paper);font-size:1.18rem;margin-top:6px;letter-spacing:-.01em}
   .readout .v small{font-family:var(--mono);font-weight:500;font-size:.72rem;color:var(--mist);letter-spacing:.04em}
 
-  /* route signature */
-  .route-band{margin-top:clamp(44px,7vw,80px);position:relative}
-  .route-band svg{width:100%;height:auto;overflow:visible}
-  .route-line{fill:none;stroke:var(--signal);stroke-width:2;stroke-linecap:round;
-    stroke-dasharray:1;stroke-dashoffset:1;animation:draw 2.4s cubic-bezier(.7,0,.25,1) .25s forwards;
-    filter:drop-shadow(0 0 6px rgba(51,214,154,.4))}
-  .route-ghost{fill:none;stroke:var(--line);stroke-width:2;stroke-linecap:round}
-  @keyframes draw{to{stroke-dashoffset:0}}
-  .node{fill:var(--ink);stroke-width:2}
-  .node.start{stroke:var(--signal)}
-  .node.finish{stroke:var(--amber)}
-  .node.pulse{animation:pulse 2.4s ease-in-out 1.6s infinite}
-  @keyframes pulse{0%,100%{r:5}50%{r:8;opacity:.7}}
-  .route-tag{font-family:var(--mono);font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;fill:var(--mist)}
+  /* focus areas */
+  .focus{margin-top:clamp(44px,7vw,80px);display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:2px;overflow:hidden}
+  .foc{background:var(--ink);padding:15px 16px;transition:background .25s}
+  .foc:hover{background:var(--panel)}
+  .foc-k{font-family:var(--mono);font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:var(--paper);display:flex;align-items:center;gap:.5em}
+  .foc-k::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--signal);flex:none;box-shadow:0 0 7px var(--signal);opacity:.85}
+  .foc-v{margin-top:10px;font-family:var(--mono);font-size:.7rem;line-height:1.5;color:var(--mist);letter-spacing:.01em}
+  @media(max-width:920px){ .focus{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:520px){ .focus{grid-template-columns:repeat(2,1fr)} }
   .scroll-cue{margin-top:30px;display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mist-2)}
   .scroll-cue .bar{width:34px;height:1px;background:var(--mist-2);position:relative;overflow:hidden}
   .scroll-cue .bar::after{content:"";position:absolute;inset:0;background:var(--signal);transform:translateX(-100%);animation:slide 2.6s ease-in-out infinite}
@@ -239,8 +234,6 @@
   @media(prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
-    .route-line{animation:none;stroke-dashoffset:0}
-    .node.pulse{animation:none}
     .scroll-cue .bar::after{animation:none;transform:translateX(0)}
   }
 </style>
@@ -276,16 +269,32 @@
       <div class="readout" role="listitem"><div class="k">Based</div><div class="v">Warsaw, PL</div></div>
     </div>
 
-    <!-- SIGNATURE: smoothed GPS route -->
-    <div class="route-band" aria-hidden="true">
-      <svg viewBox="0 0 1000 220" role="img">
-        <path class="route-ghost" d="M30 165 C 130 185 150 60 250 78 C 330 92 360 180 470 150 C 560 126 560 36 680 64 C 780 86 792 168 900 132 C 944 117 968 92 982 66"/>
-        <path class="route-line" pathLength="1" d="M30 165 C 130 185 150 60 250 78 C 330 92 360 180 470 150 C 560 126 560 36 680 64 C 780 86 792 168 900 132 C 944 117 968 92 982 66"/>
-        <circle class="node start" cx="30" cy="165" r="5.5"/>
-        <circle class="node finish pulse" cx="982" cy="66" r="5.5"/>
-        <text class="route-tag" x="44" y="190">2014</text>
-        <text class="route-tag" x="900" y="50" text-anchor="end">2026</text>
-      </svg>
+    <!-- FOCUS AREAS -->
+    <div class="focus" role="list" aria-label="Core focus areas">
+      <div class="foc" role="listitem">
+        <div class="foc-k">Fintech</div>
+        <div class="foc-v">StoreKit 2 · live rates · in-app purchases</div>
+      </div>
+      <div class="foc" role="listitem">
+        <div class="foc-k">Health &amp; Fitness</div>
+        <div class="foc-v">HealthKit · WorkoutKit · Core Motion</div>
+      </div>
+      <div class="foc" role="listitem">
+        <div class="foc-k">IoT</div>
+        <div class="foc-v">Core Bluetooth · iBeacon · Core Location</div>
+      </div>
+      <div class="foc" role="listitem">
+        <div class="foc-k">Entertainment</div>
+        <div class="foc-v">AVFoundation · audio · playback</div>
+      </div>
+      <div class="foc" role="listitem">
+        <div class="foc-k">Photo &amp; Video</div>
+        <div class="foc-v">AVCapture · Vision · Core Image</div>
+      </div>
+      <div class="foc" role="listitem">
+        <div class="foc-k">AR</div>
+        <div class="foc-v">ARKit · RealityKit · SceneKit</div>
+      </div>
     </div>
 
     <div class="scroll-cue"><span class="bar"></span>scroll</div>
