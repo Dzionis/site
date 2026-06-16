@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<!-- Post — copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>On-device Vision + Core ML without shipping a 200 MB model · Dzionis Brek</title>
+<meta name="description" content="How I run an image classifier on-device with Vision and Core ML — quantization, picking compute units, and keeping the model out of the app binary so the download stays small." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="On-device Vision + Core ML without shipping a 200 MB model" />
+<meta property="og:description" content="Quantization, Vision requests, and the tricks I use to run Core ML on-device while staying inside the app-size budget." />
+<meta property="og:url" content="https://dzionis.by/writing/vision-coreml-small-model.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">ML · On-device</span>
+      <h1>On-device Vision + Core ML without shipping a 200 MB model</h1>
+      <div class="post-meta">
+        <span>May 12, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Core ML</span>
+        <span class="chip">Vision</span>
+        <span class="chip">Performance</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">On-device machine learning is one of the best deals Apple gives you: it's private, it works offline, and every inference is free. The catch is that the model has to live somewhere, and a good vision model is tens or hundreds of megabytes. Ship it naively and you've doubled your download size for a feature most users will never open.</p>
+
+      <p>I've shipped a handful of apps that classify or detect things in images on-device — a plant identifier, a receipt scanner, a "what breed is this dog" toy that did better numbers than the serious apps. Every one of them ran into the same tension. The Vision and Core ML side is genuinely pleasant; Apple has done the hard work. The fight is always about <em>size</em>. This is the playbook I've settled on for getting a real model running without blowing the app-size budget.</p>
+
+      <h2>Why on-device at all</h2>
+      <p>The easy alternative is a server. Upload the image, run the model on a box you control, send back JSON. It works, and for some products it's the right call. But on-device wins on three axes that matter more than they look on a slide.</p>
+      <ul>
+        <li><strong>Privacy.</strong> The photo never leaves the phone. For anything involving people, documents, or medical-adjacent images, that's not a nice-to-have — it's the difference between an easy App Review and a privacy-policy negotiation.</li>
+        <li><strong>Offline.</strong> The classifier works in a basement, on a plane, on a cracked Warsaw tram connection. No spinner waiting on a round trip.</li>
+        <li><strong>Cost.</strong> Inference is free forever. No GPU bill that scales with success. A feature that goes viral doesn't bankrupt you.</li>
+      </ul>
+      <p>The price for all three is that the weights ship to the device. That's the whole problem, and the rest of this post is about managing it.</p>
+
+      <h2>The Vision pipeline</h2>
+      <p>Before optimizing anything, the actual plumbing. Vision is the framework you want sitting on top of Core ML for image work — it handles the things you'd otherwise get wrong: orientation, scaling and cropping to the model's expected input, color space, and pixel format. You almost never feed a raw <code>CVPixelBuffer</code> straight into an <code>MLModel</code> for vision; you let Vision do the preprocessing.</p>
+      <p>The shape of it is three objects. You wrap your compiled <code>MLModel</code> in a <code>VNCoreMLModel</code>. You create a <code>VNCoreMLRequest</code> with that model and a completion handler. Then you hand the request to a <code>VNImageRequestHandler</code> built from whatever you're classifying — a pixel buffer from the camera, a <code>CGImage</code>, a file URL. The results come back as <code>VNObservation</code> subclasses: <code>VNClassificationObservation</code> for a classifier, <code>VNRecognizedObjectObservation</code> for a detector, each with a confidence.</p>
+
+      <pre><code>import Vision
+import CoreML
+
+final class FrameClassifier {
+
+    private let request: VNCoreMLRequest
+
+    init() throws {
+        // The model class is generated from the .mlmodel at build time,
+        // or load a compiled .mlmodelc URL at runtime (more on that below).
+        let config = MLModelConfiguration()
+        config.computeUnits = .all
+        let coreMLModel = try VNCoreMLModel(for: PlantNet(configuration: config).model)
+
+        request = VNCoreMLRequest(model: coreMLModel)
+        // Let Vision scale &amp; crop to the model's input — no manual resize.
+        request.imageCropAndScaleOption = .centerCrop
+    }
+
+    /// Classify a single camera frame. Call off the main thread.
+    func classify(_ pixelBuffer: CVPixelBuffer,
+                  orientation: CGImagePropertyOrientation) throws
+                  -&gt; [(label: String, confidence: Float)] {
+        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer,
+                                            orientation: orientation)
+        try handler.perform([request])
+
+        let results = request.results as? [VNClassificationObservation] ?? []
+        return results
+            .filter { $0.confidence &gt; 0.05 }
+            .prefix(3)
+            .map { ($0.identifier, $0.confidence) }
+    }
+}</code></pre>
+
+      <p>Two things people miss here. First, <code>imageCropAndScaleOption</code> actually changes your results — <code>.centerCrop</code> versus <code>.scaleFit</code> feeds the network different pixels, and the "right" one depends on how the model was trained. Test both. Second, <code>perform</code> is synchronous and not cheap; never call it on the main thread. On a live camera feed, run it on a serial background queue and drop frames rather than queueing them, or you'll build a backlog the moment the device thermal-throttles.</p>
+
+      <h2>Shrinking the model</h2>
+      <p>Now the size fight. A model trained in PyTorch and converted with <code>coremltools</code> typically lands with 32-bit float weights. That's the lazy default and it's enormous. The single highest-leverage move is quantization — storing the weights at lower precision.</p>
+      <p>Going from float32 to <strong>float16</strong> halves the weight size for free, with accuracy loss that's almost always in the noise. There's no reason not to; do it on every model. The bigger win is <strong>8-bit</strong> weights, or for convolutional models <strong>palettization</strong> — clustering the weights down to a small lookup table, say 16 distinct values per layer (4-bit). That can take a 100 MB model to 12–15 MB.</p>
+      <p>You do this in Python at conversion time, not in Swift. With recent <code>coremltools</code> it's a few lines:</p>
+
+      <pre><code># coremltools — run once, offline, when you convert the model.
+import coremltools as ct
+import coremltools.optimize.coreml as cto
+
+model = ct.models.MLModel("PlantNet.mlpackage")
+
+# 6-bit palettization: weights snap to 64 cluster centroids per layer.
+config = cto.OptimizationConfig(
+    global_config=cto.OpPalettizerConfig(mode="kmeans", nbits=6)
+)
+compressed = cto.palettize_weights(model, config)
+compressed.save("PlantNet-6bit.mlpackage")</code></pre>
+
+      <div class="callout">
+        <span class="clabel">Measure the trade</span>
+        <p>Quantization is not free accuracy — it's a trade, and you don't get to guess the rate. Keep a held-out set of a few hundred labelled images and run top-1 accuracy on the full-precision model and each compressed variant. I've seen 6-bit cost less than a point and I've seen it fall off a cliff, entirely depending on the architecture. Pick the smallest model whose accuracy you can still defend, not the smallest model.</p>
+      </div>
+
+      <h2>Keeping it out of the binary</h2>
+      <p>Even a 15 MB model is 15 MB on your download, and it's there whether or not the user ever taps the camera button. The fix is to stop bundling the weights in the app and fetch them only when the feature is first used. Two ways.</p>
+      <p><strong>On-Demand Resources</strong> is the Apple-blessed path. You tag the <code>.mlmodel</code> with an ODR tag in Xcode, and at runtime you request the tag through an <code>NSBundleResourceRequest</code>. Apple hosts the asset, it downloads on demand, and the OS can purge it under storage pressure and re-fetch later. The download doesn't count against your initial app size. It's clean, but it ties you to App Store hosting and the tag dance.</p>
+      <p><strong>Download it yourself</strong> is what I usually reach for, because it gives me a versioning story. Host the model on your own CDN, download the raw <code>.mlmodel</code> (or an <code>.mlpackage</code> zip) on first use, and compile it on the device. That last step matters: Core ML doesn't run a <code>.mlmodel</code> directly, it runs the compiled <code>.mlmodelc</code>. <code>MLModel.compileModel(at:)</code> does that compilation locally, and you cache the result.</p>
+
+      <pre><code>import CoreML
+
+enum ModelLoader {
+
+    /// Download a .mlmodel once, compile it on-device, cache the .mlmodelc,
+    /// and return a ready-to-use MLModel.
+    static func loadRemoteModel(from url: URL) async throws -&gt; MLModel {
+        let caches = FileManager.default.urls(for: .cachesDirectory,
+                                              in: .userDomainMask)[0]
+        let compiledURL = caches.appendingPathComponent("PlantNet.mlmodelc")
+
+        let config = MLModelConfiguration()
+        config.computeUnits = .cpuAndNeuralEngine
+
+        // Reuse the compiled model if we've already done this once.
+        if FileManager.default.fileExists(atPath: compiledURL.path) {
+            return try MLModel(contentsOf: compiledURL, configuration: config)
+        }
+
+        // Download the raw model, then compile it locally.
+        let (tempURL, _) = try await URLSession.shared.download(from: url)
+        let freshlyCompiled = try await MLModel.compileModel(at: tempURL)
+
+        // compileModel writes to a temp dir — move it somewhere durable.
+        try? FileManager.default.removeItem(at: compiledURL)
+        try FileManager.default.moveItem(at: freshlyCompiled, to: compiledURL)
+
+        return try MLModel(contentsOf: compiledURL, configuration: config)
+    }
+}</code></pre>
+
+      <p>Compilation takes a beat — a couple of seconds for a chunky model on an older phone — so do it once, show a small "Preparing…" state the first time, and never again. Cache to <code>Caches</code> if you can re-download, or <code>Application Support</code> if losing it would break the app offline. And put a version string in the filename or a sidecar, so shipping a better model later is just a different URL.</p>
+
+      <h2>Choosing compute units</h2>
+      <p>When you build the <code>MLModelConfiguration</code> you pick where inference runs via <code>computeUnits</code>. The options that matter are <code>.all</code>, <code>.cpuAndNeuralEngine</code>, and <code>.cpuAndGPU</code>. The temptation is to set <code>.all</code> and forget it — and often that's right, since it lets Core ML schedule each layer wherever it runs fastest, usually leaning on the Neural Engine.</p>
+      <p>But <code>.all</code> can pull in the GPU, and the GPU is also drawing your UI. On a live camera feature, fighting Metal for the GPU shows up as dropped frames and a phone that gets hot fast. For sustained, frame-by-frame inference I often pin to <code>.cpuAndNeuralEngine</code>: it leaves the GPU for rendering and the Neural Engine sips power compared to the GPU under load. For a single one-shot classification where latency is king and nothing's animating, <code>.all</code> usually wins on raw speed.</p>
+      <p>There's no universal answer — it's a latency-versus-thermals trade, and it depends on your model's layers and your frame rate. Profile both on a real device (the simulator's numbers are meaningless here), watch the thermal state, and pick per feature.</p>
+
+      <h2>App thinning realities</h2>
+      <p>One more thing, because it's caused me real confusion. The number in App Store Connect is not the number you see when you drag a build into Xcode. The App Store slices and thins your binary per device, so users download less than the universal build suggests. Generate an App Thinning Size Report from an export and read the <em>thinned</em> figures — that's what a given iPhone actually pulls down.</p>
+      <p>This cuts both ways with models. A bundled <code>.mlmodelc</code> isn't architecture-specific, so thinning won't shrink it — it lands on every device at full weight. That's exactly why pulling the model out of the bundle has such an outsized effect on the install size: you're removing the one big asset that thinning can't touch.</p>
+
+      <p>The thing I keep coming back to is that model size is a product decision wearing an engineering costume. "6-bit or 8-bit" looks like a question for the ML notebook, but it's really "how much download are we willing to spend, and how much accuracy will users forgive?" — and that's a call about who your users are and what the feature is worth to them. The frameworks are the easy part. Vision and Core ML will happily run whatever you give them. The craft is in deciding how big "whatever" gets to be, and where it lives so your app stays light for the people who never use it.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

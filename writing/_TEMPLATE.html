@@ -1,19 +1,20 @@
 <!DOCTYPE html>
 <!--
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  NEW BLOG POST — copy this file, don't edit it in place.               │
-  │                                                                        │
-  │  1. cp writing/_TEMPLATE.html writing/your-post-slug.html              │
-  │       (slug = lowercase, words-with-dashes, no spaces — it's the URL)  │
-  │  2. Edit everything marked  EDIT:  below — <title>, the meta tags,     │
-  │     the <h1>, the date/read-time, the tags, and the <article> body.    │
-  │  3. Add one <a class="post"> line to index.html, inside the            │
-  │       <!-- POST-LIST:START --> … <!-- POST-LIST:END --> block.         │
-  │  4. Deploy: copy the folder up (or push). No build step.               │
-  │                                                                        │
-  │  Styling lives in ../assets/blog.css — you never write CSS here.       │
-  │  Full instructions: WRITING.md                                         │
-  └──────────────────────────────────────────────────────────────────────┘
+  NEW BLOG POST — copy this file, don't edit it in place.
+
+    1. cp writing/_TEMPLATE.html writing/your-post-slug.html
+         (slug = lowercase-with-dashes, no spaces — it becomes the URL)
+    2. Edit everything marked  EDIT:  below — <title>, the meta tags,
+       the <h1>, the date / read-time, the tags, and the <article> body.
+    3. Add one <a class="post"> entry to writing/index.html (the archive
+       that lists every post), inside the POST-LIST:START / END markers.
+    4. Optional: feature it on the home page too — add the same entry to
+       index.html, inside its POST-LIST:START / END markers (the href
+       there needs a "writing/" prefix).
+    5. Deploy: copy the folder (or push). No build step.
+
+  Styling lives in ../assets/blog.css — you never write CSS here.
+  Full instructions: WRITING.md
 -->
 <html lang="en">
 <head>
@@ -39,7 +40,7 @@
 <header class="nav">
   <div class="nav-inner">
     <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
-    <a href="../index.html#writing" class="nav-back">← Writing</a>
+    <a href="index.html" class="nav-back">← Writing</a>
   </div>
 </header>
 
@@ -98,7 +99,7 @@ func example() {
   </article>
 
   <div class="post-foot">
-    <a href="../index.html#writing" class="back">← All writing</a>
+    <a href="index.html" class="back">← All writing</a>
   </div>
 </main>
 

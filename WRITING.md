@@ -11,6 +11,7 @@ site/
 ├─ assets/
 │  └─ blog.css                     # shared styles for every post (the only CSS)
 ├─ writing/
+│  ├─ index.html                   # the archive — lists every post
 │  ├─ _TEMPLATE.html               # copy this to start a new post
 │  └─ smoothing-noisy-gps.html     # sample post
 └─ WRITING.md                      # this file
@@ -51,19 +52,27 @@ The body is just HTML. You have these building blocks (all styled already):
 
 Put any images under `assets/img/` and reference them as `../assets/img/…`.
 
-**3. List it on the home page**
+**3. List it on the writing page**
 
-In `index.html`, find the `<!-- POST-LIST:START -->` … `<!-- POST-LIST:END -->`
-block in the Writing section. Copy one `<a class="post">` entry to the **top**
-(newest first), point `href` at your new file, and set the title, date, and dek:
+`writing/index.html` is the archive that lists every post. Find the
+`<!-- POST-LIST:START -->` … `<!-- POST-LIST:END -->` block and copy one
+`<a class="post">` entry to the **top** (newest first). The archive is in the
+same folder, so the `href` is just the filename:
 
 ```html
-<a class="post" href="writing/your-post-slug.html">
+<a class="post" href="your-post-slug.html">
   <span class="ptitle">Your post title</span>
   <span class="pmeta">Mon YYYY · N min</span>
   <span class="dek">One-line teaser shown under the title.</span>
 </a>
 ```
+
+**4. (Optional) Feature it on the home page**
+
+The Writing section on `index.html` is a highlights preview with an
+"All writing →" link to the archive. To surface a post there too, add the same
+entry inside that file's `POST-LIST:START / END` markers — but there the `href`
+needs the folder prefix: `href="writing/your-post-slug.html"`.
 
 That's it. Repeat for each post.
 
@@ -75,7 +84,8 @@ Because posts link a shared stylesheet, open them through a local server (not
 ```sh
 cd site
 python3 -m http.server 8000
-# then visit http://localhost:8000/writing/your-post-slug.html
+# archive:  http://localhost:8000/writing/
+# a post:   http://localhost:8000/writing/your-post-slug.html
 ```
 
 ## Deploy
@@ -85,10 +95,11 @@ to GitHub Pages / Vercel / Netlify, or push it to your Pages repo.
 
 ## Notes & conventions
 
-- **Drafts:** to tease a post before it has a page, add a `<a class="post">`
-  entry with `href="#writing"` and `<span class="pmeta">Draft · YYYY</span>` —
-  that's what the remaining items in the list are. Give it a real `href` when
-  the page exists.
+- **Drafts:** to tease a post before its page exists, add it to the archive as a
+  `<div class="post post--draft">` (a plain div, not a link) with
+  `<span class="pmeta">Draft · YYYY</span>`. It renders dimmed and isn't
+  clickable. Swap it for `<a class="post" href="…">` once the page is ready —
+  that's what the remaining items in the list are.
 - **Styling:** all post styling lives in `assets/blog.css`. Change it once and
   every post updates. Its `:root` color/font tokens mirror `index.html` — if you
   ever retheme the site, update both (it's the only duplicated block).

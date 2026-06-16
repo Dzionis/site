@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<!-- Post — copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Writing a custom Core Image kernel for a camera filter · Dzionis Brek</title>
+<meta name="description" content="When the stock CIFilters run out: writing a CIColorKernel in the Metal shading language, wrapping it in a CIFilter subclass, and running it on a live camera feed without dropping frames." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Writing a custom Core Image kernel for a camera filter" />
+<meta property="og:description" content="CIKernel/Metal, color management, and the discipline that keeps a custom camera filter running at 60 fps." />
+<meta property="og:url" content="https://dzionis.by/writing/core-image-custom-kernel.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Camera · Graphics</span>
+      <h1>Writing a custom Core Image kernel for a camera filter</h1>
+      <div class="post-meta">
+        <span>June 2, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Core Image</span>
+        <span class="chip">Metal</span>
+        <span class="chip">AVFoundation</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Core Image ships with about two hundred filters, and for years that was enough. Then a client wanted a look that didn't exist in the catalogue, real-time, on the camera preview — and I had to stop chaining stock filters and write my own. It's less scary than it sounds: a CIKernel is just a tiny GPU program.</p>
+
+      <p>The mental block is the word "kernel." It conjures GPU programming, threadgroups, memory barriers — a whole discipline you'd rather not learn to ship one filter. But a Core Image kernel is the gentlest possible on-ramp to the GPU. You write a small function that takes a pixel and returns a pixel; Core Image handles the dispatch, the tiling, the buffer management, and the scheduling. You never touch a command encoder. Once that clicks, the stock-filter ceiling stops being a ceiling.</p>
+
+      <h2>When the catalogue runs out</h2>
+      <p>Apple's built-in filters are excellent and you should exhaust them first. <code>CIColorControls</code>, <code>CIColorMatrix</code>, the curve filters, the blur and convolution family — chain a few of those and you can fake a surprising amount. The reason to write your own kernel is rarely a single effect Core Image can't do. It's that <em>the combination</em> you need would take eight chained filters, and eight filters is eight intermediate buffers, eight passes over every pixel, and a frame budget you've already blown on a live preview.</p>
+      <p>My trigger was a "warm fade" film look: lift the shadows toward a teal, push highlights toward amber, desaturate slightly, then add a soft vignette — per pixel, the same math for every one. That's a textbook case for a single color kernel. One pass, one buffer, all the arithmetic fused into one function the compiler can optimise as a unit. The eight-filter version ran at maybe 24 fps on an iPhone 12 and dropped frames when you moved the camera. The one-kernel version pinned 60.</p>
+
+      <h2>Color kernel vs. general kernel</h2>
+      <p>Core Image gives you three flavours, and picking the right one is most of the performance battle:</p>
+      <ul>
+        <li><strong><code>CIColorKernel</code></strong> — the output pixel depends only on the <em>same</em> input pixel. No neighbours, no sampling elsewhere. This is the fast path: Core Image knows each output is independent, so it can tile and fuse aggressively. Use it for anything that's "a function of this pixel's color."</li>
+        <li><strong><code>CIWarpKernel</code></strong> — you return a <em>coordinate</em>, not a color. For geometric distortion: pinch, twist, lens correction.</li>
+        <li><strong><code>CIKernel</code></strong> — the general case, where output can sample input at arbitrary positions. Blurs, convolutions, anything that reads neighbours. Powerful, but you give up the locality guarantees, so reach for it only when you genuinely need other pixels.</li>
+      </ul>
+      <p>My fade is purely per-pixel, so <code>CIColorKernel</code> it is. The vignette wants the pixel's position in the image, which a color kernel gives you via <code>destCoord()</code> — so I don't even need the general kernel for that.</p>
+
+      <h2>Writing the kernel in Metal</h2>
+      <p>You used to write these in a quirky GLSL dialect embedded in a Swift string. Don't. Since iOS 11 you write them in the <strong>Metal Shading Language</strong>, in a real <code>.ci.metal</code> file, compiled at build time. You get type checking, you get a compile error instead of a runtime surprise, and the shader is precompiled into your Metal library instead of parsed on first use.</p>
+      <p>The catch is two compiler flags. Core Image kernels need a slightly different Metal compile, so the file must be built with <code>-fcikernel</code>, and the metallib linked with <code>-cikernel</code>. In the target's Build Settings, add to <em>Other Metal Compiler Flags</em>:</p>
+      <pre><code>-fcikernel</code></pre>
+      <p>and to <em>Other Metallib Linker Flags</em>:</p>
+      <pre><code>-cikernel</code></pre>
+      <p>Miss either and you'll get a cryptic "could not create kernel" at runtime rather than at build. Here's the kernel itself — note the signature: a color kernel takes a <code>sample_t</code> and returns a <code>float4</code>, and includes Core Image's Metal header.</p>
+
+      <pre><code>// WarmFade.ci.metal
+#include &lt;CoreImage/CoreImage.h&gt;   // CIKernelMetalLib types: sample_t, etc.
+
+using namespace metal;
+
+extern "C" {
+
+// A purely per-pixel "warm film" look. Runs as a CIColorKernel.
+//   s            — the input pixel (premultiplied, linear, extended range)
+//   center       — image center in pixels, for the vignette
+//   radius       — vignette falloff distance in pixels
+//   amount       — overall strength, 0…1
+[[ stitchable ]]
+float4 warmFade(sample_t s, float2 center, float radius, float amount) {
+
+    // Core Image hands us PREMULTIPLIED color. Un-premultiply before we
+    // touch the RGB, or dark/translucent edges will shift hue on us.
+    float a = s.a;
+    float3 c = (a &gt; 0.0) ? s.rgb / a : s.rgb;
+
+    // --- tone: lift shadows toward teal, push highlights toward amber ---
+    float luma = dot(c, float3(0.299, 0.587, 0.114));
+    float3 shadowTint    = float3(0.00, 0.04, 0.06);   // teal
+    float3 highlightTint = float3(0.06, 0.03, 0.00);   // amber
+    c += shadowTint    * (1.0 - luma);
+    c += highlightTint * luma;
+
+    // --- gentle desaturation toward the same luma ---
+    c = mix(float3(luma), c, 0.85);
+
+    // --- vignette from the pixel's own position (destCoord) ---
+    float2 p = destCoord();
+    float d  = distance(p, center) / radius;          // 0 at center, 1 at edge
+    float v  = 1.0 - smoothstep(0.6, 1.25, d) * 0.55; // darken the corners
+    c *= v;
+
+    // blend the whole effect by `amount`, clamp, re-premultiply on the way out.
+    float3 base = (a &gt; 0.0) ? s.rgb / a : s.rgb;
+    c = mix(base, c, amount);
+    c = clamp(c, 0.0, 1.0);
+    return float4(c * a, a);
+}
+
+}</code></pre>
+
+      <div class="callout">
+        <span class="clabel">Branch-light</span>
+        <p>The GPU runs pixels in lockstep groups; when threads in a group take different branches it has to execute <em>both</em> sides and mask. The two <code>a &gt; 0.0</code> guards above are uniform enough not to hurt, but resist the urge to add per-pixel <code>if</code> ladders. Prefer <code>mix</code>, <code>step</code>, <code>smoothstep</code>, and <code>clamp</code> — branchless math is what keeps a color kernel cheap.</p>
+      </div>
+
+      <h2>The Swift wrapper</h2>
+      <p>A kernel on its own isn't a filter. The idiomatic packaging is a <code>CIFilter</code> subclass that loads the kernel once from the Metal library and exposes typed inputs. Loading the <code>.metallib</code> is the part people get wrong: read the data from the bundle and hand it to <code>CIColorKernel(functionName:fromMetalLibraryData:)</code>. Do it once, statically — never per frame.</p>
+
+      <pre><code>import CoreImage
+
+final class WarmFadeFilter: CIFilter {
+
+    var inputImage: CIImage?
+    var amount: Float = 1.0
+
+    // Load the compiled kernel ONCE. Building a kernel per frame is the
+    // classic way to tank your frame rate.
+    private static let kernel: CIColorKernel = {
+        guard let url = Bundle.main.url(forResource: "default",
+                                        withExtension: "metallib"),
+              let data = try? Data(contentsOf: url),
+              let k = try? CIColorKernel(functionName: "warmFade",
+                                         fromMetalLibraryData: data)
+        else { fatalError("warmFade kernel failed to load — check the -cikernel flags") }
+        return k
+    }()
+
+    override var outputImage: CIImage? {
+        guard let input = inputImage else { return nil }
+        let r = input.extent
+        let center = CIVector(x: r.midX, y: r.midY)
+        let radius = Float(max(r.width, r.height) * 0.65)
+
+        // The kernel reads the input pixel-for-pixel, so the region of
+        // interest is the identity — output extent == input extent.
+        return Self.kernel.apply(
+            extent: r,
+            roiCallback: { _, rect in rect },
+            arguments: [input, center, radius, amount]
+        )
+    }
+}</code></pre>
+
+      <p>The argument order in that array must match the kernel's parameter list exactly — Core Image binds them positionally, with no names to save you. The <code>roiCallback</code> returning <code>rect</code> unchanged is the "every output pixel needs exactly the matching input pixel" contract; for a blur you'd inflate that rect by the blur radius.</p>
+
+      <h2>Feeding it the live camera</h2>
+      <p>Now the real-time part. The camera path is <code>AVCaptureVideoDataOutput</code>, which hands you a <code>CMSampleBuffer</code> on a delegate callback for every frame. The whole game is to get from that buffer to the screen <em>without the data ever touching the CPU</em>. The moment you copy pixels to main memory and back, you've lost.</p>
+      <p>So: pull the <code>CVPixelBuffer</code> out of the sample buffer, wrap it as a <code>CIImage</code> (zero-copy — it's just a view onto GPU-resident memory), run the filter, and render straight into a Metal drawable with a <code>CIContext</code> you built <strong>once</strong> on a shared <code>MTLDevice</code>.</p>
+
+      <pre><code>import AVFoundation
+import CoreImage
+import Metal
+
+final class CameraFilterRenderer: NSObject,
+    AVCaptureVideoDataOutputSampleBufferDelegate {
+
+    private let device = MTLCreateSystemDefaultDevice()!
+    private let commandQueue: MTLCommandQueue
+    private let ciContext: CIContext            // built ONCE, reused forever
+    private let filter = WarmFadeFilter()
+    let layer: CAMetalLayer
+
+    override init() {
+        commandQueue = device.makeCommandQueue()!
+        layer = CAMetalLayer()
+        layer.device = device
+        layer.pixelFormat = .bgra8Unorm
+        layer.framebufferOnly = false          // CIContext needs to write to it
+
+        // Metal-backed context. Pin the working space; disable the software
+        // path. This object is expensive to create and cheap to reuse.
+        ciContext = CIContext(mtlDevice: device, options: [
+            .workingColorSpace: CGColorSpace(name: CGColorSpace.extendedLinearSRGB)!,
+            .cacheIntermediates: false,
+            .useSoftwareRenderer: false
+        ])
+        super.init()
+    }
+
+    func captureOutput(_ output: AVCaptureOutput,
+                       didOutput sampleBuffer: CMSampleBuffer,
+                       from connection: AVCaptureConnection) {
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer),
+              let drawable = layer.nextDrawable() else { return }
+
+        // Zero-copy: wrap the GPU buffer as a CIImage, filter it.
+        let source = CIImage(cvPixelBuffer: pixelBuffer)
+        filter.inputImage = source
+        guard let output = filter.outputImage else { return }
+
+        // Render the filtered image straight into the drawable's texture.
+        let buffer = commandQueue.makeCommandBuffer()!
+        ciContext.render(output,
+                         to: drawable.texture,
+                         commandBuffer: buffer,
+                         bounds: source.extent,
+                         colorSpace: CGColorSpaceCreateDeviceRGB())
+        buffer.present(drawable)
+        buffer.commit()
+    }
+}</code></pre>
+
+      <h2>The color-management gotchas</h2>
+      <p>This is where most custom filters look subtly wrong, and it's worth slowing down. Three things bite, in order of how often they got me:</p>
+      <p><strong>Premultiplied alpha.</strong> Core Image works in premultiplied color — RGB already multiplied by alpha. If your effect manipulates RGB and any pixel is translucent (edges, composited overlays), you must un-premultiply, do your math, and re-premultiply, exactly as the kernel above does. Skip it and translucent regions shift hue. On an opaque camera frame alpha is 1 everywhere and it doesn't matter — until the day someone feeds your filter a PNG with soft edges, and then it does.</p>
+      <p><strong>The working color space.</strong> Core Image does its arithmetic in a <em>working space</em>, and for anything involving light — blending, blurring, averaging — that space should be <em>linear</em>, not gamma-encoded sRGB. Blend two colors in gamma space and the midpoint comes out too dark. I pin <code>extendedLinearSRGB</code> on the context so the math is physically correct and so I don't clip wide-gamut input.</p>
+      <p><strong>Extended range.</strong> Modern cameras deliver more than [0,1]. HDR highlights and wide-gamut (Display P3) content carry values above 1.0 and outside the sRGB cube. If you <code>clamp(c, 0, 1)</code> too eagerly you'll crush specular highlights into flat white. I clamp only the final output, after the look is applied — and on an HDR pipeline I'd reconsider even that.</p>
+
+      <h2>Performance discipline</h2>
+      <p>A custom kernel is fast by default; you make it slow by accident. The rules that keep mine at 60 fps are boring and non-negotiable. Reuse one <code>CIContext</code> — it caches the compiled pipeline state, and a fresh one per frame re-pays that cost every time. Build the kernel once, statically. Never round-trip to the CPU: no <code>UIImage</code> in the hot path, no <code>createCGImage</code> per frame, no reading pixels back. Render through a Metal-backed context into a <code>CAMetalLayer</code> drawable so the result stays on the GPU all the way to the display. And keep the kernel itself lean — fuse your math into one color kernel instead of chaining filters, and stay branch-light.</p>
+      <p>Two more from shipping it. Set <code>cacheIntermediates: false</code> on a video context — with a different image every frame, caching intermediates just churns memory for nothing. And watch <code>nextDrawable()</code>: it can return <code>nil</code> or block if you're holding drawables too long, so do your work and present promptly, every frame.</p>
+
+      <p>That's the whole arc: exhaust the stock filters, then write one small Metal function, wrap it in a <code>CIFilter</code> subclass that loads the compiled kernel once, and drive it from <code>AVCaptureVideoDataOutput</code> through a reused Metal-backed <code>CIContext</code> with the data never leaving the GPU. The intimidating part was always the word "kernel," and it turns out to mean a dozen lines of arithmetic on a single pixel. Accept that you're writing a tiny GPU program — mind premultiplied alpha, a linear working space, and your frame budget — and the catalogue stops being a wall. It becomes a starting point.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

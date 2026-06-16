@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Fifty apps in: what actually makes iOS code last · Dzionis Brek</title>
+<meta name="description" content="Lessons from a decade of shipping — and, harder, maintaining — 50+ App Store apps. Boring architecture, real boundaries, fewer dependencies, and code written for the next reader." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Fifty apps in: what actually makes iOS code last" />
+<meta property="og:description" content="The iOS code that survives two years of maintenance has almost nothing in common with the code that felt clever at the time." />
+<meta property="og:url" content="https://dzionis.by/writing/ios-code-that-lasts.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Craft · Architecture</span>
+      <h1>Fifty apps in: what actually makes iOS code last</h1>
+      <div class="post-meta">
+        <span>April 18, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>9 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Architecture</span>
+        <span class="chip">Swift</span>
+        <span class="chip">Maintenance</span>
+        <span class="chip">SPM</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">I've shipped more than fifty apps to the App Store. The ones that were a pleasure to open again two years later had almost nothing in common with the ones I thought were clever at the time.</p>
+
+      <p>Shipping an iOS app is the easy part — or at least the well-documented part. The hard part, the part nobody puts in a portfolio, is the two years <em>after</em> launch: the OS updates that break things, the small features bolted on by someone who wasn't there for v1, the bug reported at 11pm that lives three layers deep in a system you half-remember. Most of an app's life is maintenance. After fifty of them, here's what I've found actually survives contact with that.</p>
+
+      <h2>Boring architecture wins</h2>
+      <p>Every couple of years iOS has an architecture of the moment — VIPER, heavy Redux, whatever the conference talks are about. I've shipped most of them. The lesson is consistent: the clever pattern ages badly, and plain MVVM done without ceremony ages fine.</p>
+      <p>It's not that the fancy ones are wrong. It's that the next person to touch the code — frequently future-me, who has forgotten everything — has to <em>relearn</em> the cleverness before they can fix a one-line bug. Boring architecture is legible. When someone opens the project cold and immediately knows where the view logic lives, where the network call is, and where the state changes, you've already won the maintenance game.</p>
+
+      <h2>Draw boundaries the compiler enforces</h2>
+      <p>Good intentions don't keep code separated; import rules do. The single most useful thing I do on any app that'll live a while is split it into Swift Package modules where the boundaries are real — a feature module that <em>can't</em> import another feature, a networking module that knows nothing about UI. If crossing a boundary requires an <code>import</code> you have to add on purpose, you'll feel the wrong dependency before you ship it, not a year later when it's load-bearing.</p>
+      <p>The same instinct, smaller: put the things that change for reasons outside your control behind a small protocol you own.</p>
+
+      <pre><code>protocol RateStore {
+    func save(_ rates: [Rate]) throws
+    func load() throws -> [Rate]
+}</code></pre>
+
+      <p>The app talks to <code>RateStore</code>. It never touches Core Data, SwiftData, or a file directly. When SwiftData arrived and I swapped the implementation underneath, exactly one type changed and nothing else in the app noticed. A boundary you own is a place you're allowed to change your mind.</p>
+
+      <h2>Depend on Apple; distrust everyone else</h2>
+      <p>Every third-party dependency is a bet that someone you've never met will maintain their code for as long as you maintain yours. Over a two-year horizon that bet often loses: the library gets abandoned, or breaks on the new Xcode, or makes an ABI change the week before your release.</p>
+      <p>So I've gotten conservative. First-party frameworks first, always — Apple is the one dependency guaranteed to still be here. For the rest, I ask three questions before adding anything: Could I write the part I actually use in a day? Who maintains this, and will they next year? What happens to my release if it breaks the morning of? If the honest answers are "yes," "unclear," and "I'm stuck," I vendor the twenty lines I need and move on.</p>
+
+      <div class="callout">
+        <span class="clabel">The best code is deleted code</span>
+        <p>Every line is a liability someone has to read, build, and not break. I delete aggressively — dead feature flags, the abstraction that only ever had one implementation, the "might need it later" helper. A smaller codebase isn't a stylistic preference; it's less surface area for the next bug to hide in.</p>
+      </div>
+
+      <h2>Test what's expensive to get wrong</h2>
+      <p>I don't chase coverage numbers. High coverage on an app that's mostly glue tells you the glue is glued. What I test, without fail, is the code where a mistake actually costs something: the purchase and subscription paths, the data migrations that can corrupt a user's history, and the pure algorithms — the GPS filter, the currency math, the parsing.</p>
+      <p>Those tests have a property the UI tests never had: they're fast, they're stable, and they keep paying out for years without flaking. A unit test on a migration has saved me from shipping a data-loss bug more than once. A snapshot test on a screen has mostly just broken whenever a designer nudged a margin.</p>
+
+      <h2>Write for the reader</h2>
+      <p>The compiler will accept almost anything. The person reading this code in eighteen months — possibly you, definitely tired — will not. So I optimize for them: honest names, short functions, and a hard veto on cleverness that saves three lines at the cost of a re-read.</p>
+      <p>This is why the Kalman filter in <a href="smoothing-noisy-gps.html">the GPS post</a> is about thirty plain lines. It could be denser. It shouldn't be — because the real requirement isn't "works," it's "still makes sense to someone who has to change it later." Code is read far more than it's written, and on a long-lived app it's read by people running on no context at all.</p>
+
+      <h2>Budget for the churn</h2>
+      <p>Every WWDC breaks something, and pretending otherwise just means the breakage finds you in September instead of June. I keep deployment targets moving rather than stranding an app on an old OS, I adopt new APIs deliberately instead of all at once, and I treat the annual "fix what Xcode broke" pass as planned work, not a surprise.</p>
+
+      <p>None of this is exciting, and that's the point. The real test of iOS code isn't whether it shipped — almost anything ships. It's whether, a year from now, you can open the project and make a change in an afternoon without being afraid. Fifty apps in, that's the only metric I really trust.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

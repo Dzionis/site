@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Attribution without creeping people out · Dzionis Brek</title>
+<meta name="description" content="AppsFlyer, Adjust and SKAdNetwork in practice after ATT — what aggregate attribution actually gives you, where probabilistic modeling lies to you, and how to run campaigns you can measure without surveilling users." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Attribution without creeping people out" />
+<meta property="og:description" content="The post-IDFA reality: what SKAdNetwork and AdAttributionKit really give you, what MMPs do now, and how to measure growth without tracking individuals." />
+<meta property="og:url" content="https://dzionis.by/writing/attribution-without-creeping-people-out.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Growth · Analytics</span>
+      <h1>Attribution without creeping people out</h1>
+      <div class="post-meta">
+        <span>January 27, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">SKAdNetwork</span>
+        <span class="chip">AppsFlyer</span>
+        <span class="chip">Privacy</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">For about a decade, mobile attribution worked like a wiretap nobody objected to: every install carried a device ID, and you could follow a specific human from the ad they tapped to the purchase they made three weeks later. That world is gone, and most of the panic about it came from people who never noticed they were running a wiretap.</p>
+
+      <p>The IDFA — Apple's per-device advertising identifier — used to be readable by default. App Tracking Transparency changed that in 2021: now you have to ask, with a system prompt, and the overwhelming majority of people say no. Deterministic, per-user attribution across apps depended entirely on that identifier, so it largely died with it. What replaced it is stranger, coarser, and — if you stop fighting it — genuinely better for everyone involved. Here's how I actually run measurement now, after shipping a stack of apps through the transition.</p>
+
+      <h2>What you lost, and why it's fine</h2>
+      <p>The old pitch was seductive: cross-app, user-level truth. You knew that <em>this</em> person saw <em>that</em> creative on a Tuesday and converted on a Thursday, and you could optimize against it down to the individual. It was also, in hindsight, a surveillance apparatus that most users would have switched off in a heartbeat if anyone had bothered to ask them. ATT asked them. They switched it off.</p>
+      <p>The reflex among growth folks was that measurement had become impossible. It hadn't — it had become <em>aggregate</em>. You no longer get to follow individuals, but you can still learn which campaigns produce installs and revenue at the population level. For deciding where to spend money, that's almost always the question you actually had. The granular per-user view was mostly a comfortable illusion of precision, not a real input to most decisions.</p>
+
+      <h2>What SKAdNetwork actually gives you</h2>
+      <p>SKAdNetwork — SKAN — is Apple's privacy-preserving attribution framework, and AdAttributionKit is its successor that broadens the same model to other app marketplaces. The mental shift is this: <strong>the OS does the attribution, not the ad network, and it hands back deliberately blurred results.</strong> The flow is roughly: an ad network registers an ad, the user installs and opens your app, your app writes a <code>conversionValue</code>, and at some later point Apple sends a signed <em>postback</em> to the ad network. Crucially, that postback is not tied to a person — it's an aggregate signal with the edges sanded off on purpose.</p>
+      <p>The conversion value is the one lever you control, and it's tiny. In the original SKAN you got a 6-bit fine value — 64 possible states — to encode whatever post-install behavior matters to you: registered, completed onboarding, made a purchase, hit some revenue tier. Newer versions add a coarse value (just <code>low</code> / <code>medium</code> / <code>high</code>) that survives even when volume is too low for the fine value to be released, plus multiple postback windows so you can see early and later behavior separately. Designing that encoding — deciding what those 64 buckets <em>mean</em> for your app — is now one of the highest-leverage things a growth engineer does.</p>
+      <p>Two mechanisms keep it private, and you have to design around both:</p>
+      <ul>
+        <li><strong>Timing windows.</strong> Postbacks don't arrive in real time. There's a randomized delay measured in hours to days, so you can't correlate a postback with a specific install by watching the clock. Same-day dashboards are simply not a thing anymore.</li>
+        <li><strong>Crowd-anonymity thresholds.</strong> If a campaign hasn't driven enough installs, Apple withholds the conversion value entirely — you get the install count but a null value. Below the privacy threshold, the fine-grained signal is suppressed so no single user can be re-identified from a thin cohort. The coarse value is more forgiving, which is exactly why it exists.</li>
+      </ul>
+
+      <div class="callout">
+        <span class="clabel">Privacy by design, not by promise</span>
+        <p>The thing to internalize is that these limits aren't bugs to engineer around — they're the product. The delays, the bit budget, the thresholds: each one exists so that the system <em>cannot</em> leak an individual even if you wanted it to. When a campaign returns null conversion values, that's not a failure, it's the floor doing its job. Treating the constraints as the spec instead of the obstacle is the whole mindset shift.</p>
+      </div>
+
+      <h2>The ATT prompt is a real decision</h2>
+      <p>People treat showing the ATT prompt as a formality. It isn't. If you call <code>requestTrackingAuthorization</code> and the user grants it, you can read the IDFA and do classic deterministic attribution for that slice of users. If you never prompt, or they deny — and most do — you're in SKAN-only territory. So the prompt is a genuine fork in your measurement strategy, not a checkbox.</p>
+      <p>My default for consumer apps is to skip the prompt or treat opt-in as a rounding error and build everything on SKAN. The reasoning is partly practical and partly principled. Practically, opt-in rates are low enough that a deterministic stack built on them is a stack built on a self-selected minority — and optimizing toward a biased sample is worse than optimizing toward an honest aggregate. Principled, a prompt that exists only to keep tracking people is exactly the kind of thing that erodes trust the first time a user reads it carefully. If you do prompt, earn it: ask in context, after the user has seen value, and be honest about what it's for.</p>
+
+      <h2>What the MMPs do now</h2>
+      <p>AppsFlyer and Adjust — the mobile measurement partners — sold themselves for years on deterministic, last-touch, user-level attribution. That core product evaporated with the IDFA, and a fair question is what you're paying them for now. The honest answer: orchestration and aggregation, not the old magic.</p>
+      <p>What they genuinely do well today is manage the SKAN plumbing so you don't hand-roll it across a dozen networks. They give you a sane way to design and version your conversion-value schema, decode the postbacks, reconcile Apple's blurred numbers with your own in-app event data, and present it all in one dashboard instead of fifteen network consoles. That's real work and worth paying for. What you should be skeptical of is anything labeled "predictive" or "modeled" — that's where the marketing outruns the math.</p>
+
+      <h2>Probabilistic modeling, and not lying to yourself</h2>
+      <p>Because aggregate data feels thin, a whole industry has sprung up to fill the gaps with modeling: fingerprinting-adjacent probabilistic matching, media-mix models, "AI-powered" install attribution. Some of it is legitimate statistics. A media-mix model that looks at total spend per channel against total installs over time, with no per-user data at all, is a perfectly respectable way to estimate channel contribution. Apple's own threshold logic is, in effect, sanctioned modeling.</p>
+      <p>The trap is mistaking a model's confident output for measured ground truth. A probabilistic attribution that assigns an install to a network with "87% confidence" is not telling you what happened — it's telling you what the model guessed, and that guess inherits every bias in its training data. Worse, several flavors of probabilistic matching lean on device signals in ways that are squarely against Apple's rules, which means you can build a metric that's both legally shaky and quietly wrong. I treat modeled numbers as a directional prior, never as a number I'd defend in a budget meeting. If a model and the SKAN postbacks disagree, the postbacks win.</p>
+
+      <h2>The old world versus the SKAN world</h2>
+      <p>It's worth laying the two regimes side by side, because the differences aren't cosmetic — they change what questions you're even allowed to ask:</p>
+
+      <table>
+        <thead><tr><th>Dimension</th><th>IDFA era</th><th>SKAN / AdAttributionKit era</th></tr></thead>
+        <tbody>
+          <tr><td>Unit of truth</td><td>The individual user</td><td>The campaign cohort</td></tr>
+          <tr><td>Timing</td><td>Real-time, click-to-event</td><td>Delayed postbacks, randomized windows</td></tr>
+          <tr><td>Signal richness</td><td>Effectively unlimited</td><td>6-bit fine value + coarse low/med/high</td></tr>
+          <tr><td>Low-volume campaigns</td><td>Fully measurable</td><td>Values suppressed below crowd-anonymity threshold</td></tr>
+          <tr><td>Who attributes</td><td>The ad network / MMP</td><td>The operating system</td></tr>
+          <tr><td>Privacy posture</td><td>Opt-out, often invisible</td><td>Private by design, enforced by the OS</td></tr>
+          <tr><td>Failure mode</td><td>Over-precision you trust too much</td><td>Null values you have to plan for</td></tr>
+        </tbody>
+      </table>
+
+      <p>The right-hand column looks like a downgrade until you notice the bottom row. The old failure mode was silent: a precise, confident number that was subtly wrong and nobody questioned. The new failure mode is loud and honest — a null is unmistakably a null. I'll take a system that admits when it doesn't know over one that confidently makes something up.</p>
+
+      <h2>Campaigns you can measure without surveilling</h2>
+      <p>So how do you actually run growth in this world? The practical answer is to design backward from the conversion value. Decide the two or three post-install behaviors that genuinely predict a good user — for most apps that's something like <em>opened twice</em>, <em>completed the core action</em>, <em>crossed a revenue tier</em> — and spend your 64 buckets encoding those, not vanity events. Keep campaigns concentrated enough to clear the crowd-anonymity threshold; a dozen thin campaigns that all return nulls teach you nothing, where three fat ones return real values. Read postbacks on Apple's clock, not yours, and build your reporting cadence around days, not minutes. And use an MMP for orchestration while treating its modeled layers as a hypothesis generator rather than a source of truth.</p>
+      <p>None of this requires knowing a single thing about any specific person. That's the point, and it's also the relief — you stop maintaining a surveillance pipeline and start measuring populations, which is what you needed all along.</p>
+
+      <p>The framing I keep coming back to is that respecting users stopped being a trade-off and became the design. The regulation pushed the industry here, and plenty of teams treated it as a loss to be minimized. But the aggregate, privacy-preserving model turns out to answer the questions worth answering, while quietly retiring the ones that were only ever about following people around. Building inside the constraints — designing a conversion value that earns its bits, planning for the nulls, trusting the blurred truth over the confident guess — produces measurement I can stand behind, both to a regulator and to the person who installed my app. It's the rare case where the law and good business point the same direction, and the engineering is more honest for it.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

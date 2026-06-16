@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>RevenueCat, Adapty, or rolling your own · Dzionis Brek</title>
+<meta name="description" content="What a paywall SDK like RevenueCat or Adapty actually buys you, what it costs, how StoreKit 2 narrowed the gap, and a simple heuristic for the build-vs-buy call." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="RevenueCat, Adapty, or rolling your own" />
+<meta property="og:description" content="When a paywall SDK earns its cut, and when it doesn't." />
+<meta property="og:url" content="https://dzionis.by/writing/paywall-sdk-or-roll-your-own.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Monetization · Paywalls</span>
+      <h1>RevenueCat, Adapty, or rolling your own</h1>
+      <div class="post-meta">
+        <span>October 27, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">StoreKit</span>
+        <span class="chip">RevenueCat</span>
+        <span class="chip">Monetization</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Every time I start a subscription app, someone asks the same question on day one: do we wire up RevenueCat, or do we just talk to StoreKit ourselves? After shipping both ways more than once, I've stopped treating it as a matter of taste.</p>
+
+      <p>It's a build-vs-buy decision, and like every build-vs-buy decision it has a right answer that depends entirely on your situation. A paywall SDK — RevenueCat, Adapty, Apphud, take your pick — solves a real, annoying problem. It also takes a cut and plants a dependency squarely in your purchase path. The trick is knowing which of those facts dominates for the app in front of you.</p>
+
+      <h2>What the SDK actually buys you</h2>
+      <p>Strip away the marketing and a paywall SDK is doing a handful of concrete jobs. The first is <strong>receipt validation and entitlement state</strong>: it watches transactions, validates them server-side, and gives you a single boolean — is this user a subscriber right now? — that's correct across reinstalls, refunds, billing retries, and the family-sharing edge cases you forgot existed. That sounds small until you've written it yourself.</p>
+      <p>On top of that sit the things you'd otherwise build a backend for. <strong>Remote paywall configuration</strong> means you can change prices, copy, and layout without shipping a build. <strong>A/B testing</strong> lets you run two paywalls against each other and read the conversion difference without rolling your own assignment and stats. There's a <strong>dashboard</strong> with MRR, churn, trial conversion, and cohort charts that your non-engineer co-founder can actually read. And there are <strong>webhooks</strong> so your own backend hears about renewals and cancellations without polling Apple.</p>
+      <p>The quietly biggest win is <strong>cross-platform</strong>. The moment you have an Android app too, "is this user subscribed?" stops being a StoreKit question and becomes a question that spans two stores and two billing systems. An SDK gives you one entitlement model over both. Rolling that yourself is a project, not a feature.</p>
+
+      <h2>What it costs you</h2>
+      <p>The obvious cost is money. The pricing has shifted over the years, but the shape is the same: free under some monthly revenue threshold, then either a percentage of tracked revenue or a flat platform fee above it. On a meaningful revenue base that's a real line item — a slice of your subscription income, on top of Apple's own 15–30%, going to a third party forever.</p>
+      <p>The cost engineers underrate is the <strong>dependency in your purchase path</strong>. This SDK now sits between your user and their money. Its outages, its migration deadlines, its breaking changes, its bugs — they're now yours too, in the most revenue-critical flow you own. I've never had a catastrophic failure here, but I have spent a sprint on a forced major-version upgrade that bought my users nothing. That's the tax you don't see in the pricing page.</p>
+      <p>There's also lock-in. Your entitlement truth lives in someone else's system, and your historical subscriber data is shaped by their model. Leaving is possible — these vendors aren't hostile about it — but it's migration work, and the longer you stay the more there is to move.</p>
+
+      <h2>How StoreKit 2 changed the math</h2>
+      <p>A lot of the case for an SDK was built in the StoreKit 1 era, when receipt validation genuinely was a miserable, error-prone slog of parsing a base64 blob and talking to Apple's verification endpoint. <strong>StoreKit 2 narrowed that gap considerably.</strong></p>
+      <p>With StoreKit 2 you get transactions as typed Swift values, cryptographically signed with JWS so you can verify them on-device or on your server without the old round-trip. <code>Transaction.currentEntitlements</code> hands you the set of things the user currently owns. <code>Transaction.updates</code> is an async sequence that delivers renewals and revocations as they happen. For a single non-consumable or one straightforward subscription, that's most of what the SDK's validation layer was doing for you — now in the platform, for free.</p>
+      <p>What StoreKit 2 still doesn't give you is the rest of the package: the cross-platform entitlement model, the remote paywall config, the A/B framework, the dashboard, the webhooks to your backend. So the gap narrowed for the <em>validation</em> piece specifically, which happens to be the piece people were most afraid of. If validation was your only reason to reach for an SDK, that reason is a lot weaker in 2025 than it was in 2020.</p>
+
+      <h2>The comparison, dimension by dimension</h2>
+      <p>Here's how the two paths stack up across the things that actually decide it. "Roll your own" assumes StoreKit 2 and a modest backend of your own.</p>
+
+      <table>
+        <thead><tr><th>Dimension</th><th>Paywall SDK</th><th>Roll your own</th></tr></thead>
+        <tbody>
+          <tr><td>Receipt validation</td><td>Done, server-side, edge cases handled</td><td>StoreKit 2 gets you most of the way; edge cases are on you</td></tr>
+          <tr><td>Paywall A/B testing</td><td>Built in, no-code, results in the dashboard</td><td>You build assignment, logging, and the stats</td></tr>
+          <tr><td>Analytics &amp; charts</td><td>MRR, churn, cohorts out of the box</td><td>Whatever you wire into your own analytics</td></tr>
+          <tr><td>Cross-platform</td><td>One entitlement model over iOS + Android</td><td>A real project per extra platform</td></tr>
+          <tr><td>Cost</td><td>Revenue share or platform fee, forever</td><td>Engineering time up front, near-zero after</td></tr>
+          <tr><td>Lock-in</td><td>Entitlement truth lives in their system</td><td>You own every byte of it</td></tr>
+        </tbody>
+      </table>
+
+      <p>Read the table and the pattern is obvious: the SDK wins on everything that's a recurring product capability, and loses on cost and control. That's the whole trade in one grid.</p>
+
+      <div class="callout">
+        <span class="clabel">The cut is buying iteration speed, not code</span>
+        <p>The revenue share feels like you're paying for receipt validation you could write in a weekend. You're not — that part's nearly commoditized now. What the cut actually buys is the ability to change a price or test a paywall this afternoon, without a build and without an engineer. If your monetization is static, you're paying for a treadmill you never step on. If you're iterating on pricing weekly, that same fee is the cheapest growth lever you have.</p>
+      </div>
+
+      <h2>When to roll your own</h2>
+      <p>Rolling your own wins in a recognizable shape of app. <strong>One simple product</strong> — a single subscription or a lifetime unlock — where there's almost no entitlement complexity to manage. <strong>iOS only</strong>, so the cross-platform argument never applies. A team that <strong>isn't going to run experiments</strong>, because the price is the price and the paywall is the paywall. And cases where <strong>privacy or control is a selling point</strong>, where shipping a third-party SDK in the purchase path is something you'd rather not explain to users or an enterprise buyer.</p>
+      <p>If you already validate locally with StoreKit 2 and your entitlement logic fits on one screen, an SDK is largely solving problems you don't have. I've shipped utility apps with exactly one non-consumable where adding RevenueCat would have been pure overhead — a dependency and a future migration in exchange for a dashboard nobody would open.</p>
+
+      <h2>When the SDK clearly wins</h2>
+      <p>The SDK earns its cut just as clearly in the opposite shape. <strong>Lots of experiments</strong>: if growth depends on testing paywalls, prices, and trial lengths, the A/B and remote-config machinery pays for itself in the first test you'd otherwise have hand-rolled. <strong>A non-iOS platform</strong>: the second you ship Android, a unified entitlement model is worth real money. And <strong>a team that lives in the dashboard</strong> — a founder, a growth marketer, a finance person who needs MRR and churn without filing a ticket — gets a tool they'll use daily, which is its own kind of velocity.</p>
+      <p>Note that none of these is "validation is too hard." They're all about iteration, reach, and visibility. That's the modern case for a paywall SDK, and it's a strong one for the apps it fits.</p>
+
+      <h2>My heuristic</h2>
+      <p>Here's the rule I actually use. <strong>If monetization is a feature, roll your own. If monetization is the business, buy the SDK.</strong></p>
+      <p>A paid utility where the subscription is a quiet line at the bottom of the settings screen — that's a feature, and StoreKit 2 covers it. An app whose entire growth model is converting free users on a paywall you'll tune for years — that's the business, and you want the best monetization tooling you can get, cut and all. When I'm genuinely on the fence, I lean toward the SDK early and keep my own entitlement check as a thin layer on top, so leaving later is a migration and not a rewrite.</p>
+
+      <p>What I've stopped doing is treating this as a point of principle. There's a tribe that insists real engineers don't pay a vendor to talk to StoreKit, and another that can't imagine shipping without the dashboard. Both are arguing identity, not economics. It's a build-vs-buy call — run the numbers for the app you're actually shipping, weigh the cut against the iteration speed it buys, and pick the answer that fits. The right choice for my next app might be the opposite of the last one, and that's exactly as it should be.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<!-- Post — copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Core Bluetooth in production: talking to flaky BLE hardware · Dzionis Brek</title>
+<meta name="description" content="State restoration, reconnection with backoff, and designing an iOS app around a BLE link that will drop — because in production it always does." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Core Bluetooth in production: talking to flaky BLE hardware" />
+<meta property="og:description" content="The CBCentralManager lifecycle done right, background state restoration, reconnection with backoff, and building a UI that survives the radio failing." />
+<meta property="og:url" content="https://dzionis.by/writing/core-bluetooth-in-production.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Hardware · BLE</span>
+      <h1>Core Bluetooth in production: talking to flaky BLE hardware</h1>
+      <div class="post-meta">
+        <span>February 17, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Core Bluetooth</span>
+        <span class="chip">IoT</span>
+        <span class="chip">Reliability</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The Bluetooth demo on the engineer's desk always works. Phone and device a foot apart, fresh batteries, no microwave running, no elevator. Ship that exact code to ten thousand pockets and it falls apart within a day — because BLE is a radio, and the happy path you tested is the one situation real users almost never sit in.</p>
+
+      <p>I've shipped a handful of apps that talk to physical hardware over Bluetooth Low Energy — fitness sensors, a smart lock, a couple of industrial gadgets. They have nothing in common except the thing that breaks: the link. Core Bluetooth is a genuinely good framework, but it hands you a connection-oriented API over a medium that is fundamentally lossy, and if you write to it as though the connection is a socket that stays up, your users will hate you. Everything below is about treating the radio as a thing that <em>will</em> fail, and building so that failure is boring instead of catastrophic.</p>
+
+      <h2>The lifecycle is a chain of async hops</h2>
+      <p>The first mistake everyone makes — me included, years ago — is to instantiate a <code>CBCentralManager</code> and immediately call <code>scanForPeripherals</code>. It does nothing. Bluetooth might be off, the user might not have granted permission yet, the radio might still be spinning up. The manager has a <code>state</code>, and you are not allowed to do anything useful until it is <code>.poweredOn</code>. That transition arrives asynchronously, in a delegate callback, and it's the first link in a chain where every single step is its own async hop:</p>
+      <ol>
+        <li>Create the manager → wait for <code>centralManagerDidUpdateState</code> to report <code>.poweredOn</code>.</li>
+        <li><strong>Scan</strong> for peripherals advertising the service you care about → each discovery arrives in <code>didDiscover</code>.</li>
+        <li><strong>Connect</strong> to the one you want → success in <code>didConnect</code>, or failure in <code>didFailToConnect</code>.</li>
+        <li><strong>Discover services</strong> on the connected peripheral → <code>didDiscoverServices</code>.</li>
+        <li><strong>Discover characteristics</strong> within each service → <code>didDiscoverCharacteristicsFor</code>.</li>
+        <li><strong>Subscribe</strong> (set notify) or read/write → values land in <code>didUpdateValueFor</code>.</li>
+      </ol>
+      <p>There is no synchronous version of any of this, and there is no shortcut. You cannot discover characteristics before services, and you cannot read a characteristic you haven't discovered. I model it as an explicit state machine rather than a pile of booleans, because the moment you start tracking "are we connecting OR discovering OR subscribed" with separate flags, you've already lost. One <code>enum</code>, one source of truth, and every delegate callback is a transition.</p>
+
+      <div class="callout">
+        <span class="clabel">Filter at the scan, not after</span>
+        <p>Always pass a service UUID to <code>scanForPeripherals(withServices:)</code>. Scanning with <code>nil</code> returns <em>every</em> advertising device in radio range — dozens of them on a city street — and it keeps the radio hot, which drains battery and gets you flagged in energy reports. Scan for the one service you speak, and stop scanning the instant you've found your target.</p>
+      </div>
+
+      <h2>Background operation and state restoration</h2>
+      <p>Here's the scenario the demo never covers: the user connects to your hardware, then locks the phone and puts it in a pocket for an hour. iOS will suspend and very likely <em>terminate</em> your app to reclaim memory. Without help, the connection dies with it, and the user pulls the phone out to find a spinner. State restoration is how Core Bluetooth lets the system relaunch your app in the background — directly into the connection it was holding on your behalf — when something happens, like the peripheral sending a notification.</p>
+      <p>Two pieces wire it up. First, you opt in by giving the manager a <strong>restoration identifier</strong> at init, and you declare the <code>bluetooth-central</code> background mode in the Info.plist. Second, you implement <code>willRestoreState</code>, which iOS calls <em>before</em> <code>didUpdateState</code> on relaunch, handing you back the peripherals you were connected to. You re-grab those objects, re-assign delegates, and pick the state machine back up — you do <strong>not</strong> start scanning from scratch.</p>
+
+      <pre><code>let options: [String: Any] = [
+    CBCentralManagerOptionRestoreIdentifierKey: "com.app.central"
+]
+manager = CBCentralManager(delegate: self, queue: bleQueue, options: options)
+
+func centralManager(_ central: CBCentralManager,
+                    willRestoreState dict: [String: Any]) {
+    // iOS hands back the peripherals it kept alive for us while suspended.
+    let restored = dict[CBCentralManagerRestoredStatePeripheralsKey]
+        as? [CBPeripheral] ?? []
+    for peripheral in restored {
+        peripheral.delegate = self          // delegates don't survive relaunch
+        self.peripheral = peripheral
+        // Already connected? Resume mid-chain — re-discover, don't re-scan.
+        if peripheral.state == .connected {
+            peripheral.discoverServices([serviceUUID])
+        }
+    }
+}</code></pre>
+
+      <p>The detail that bites people: the <em>delegate</em> references are not restored — only the peripheral objects are. If you forget to set <code>peripheral.delegate = self</code> inside <code>willRestoreState</code>, the connection is alive but every callback vanishes into the void, and you'll swear the device "stopped responding" when really you stopped listening. Reassign delegates first, before anything else.</p>
+
+      <h2>Reconnection is not optional</h2>
+      <p>The link <em>will</em> drop. The user walks out of range, the device's coin cell sags, someone microwaves lunch on the 2.4&nbsp;GHz band — and you get <code>didDisconnectPeripheral</code>, often with an error, often without warning. The wrong response is to surface "Disconnected" and stop. The right response, for hardware the user clearly intends to stay paired with, is to quietly try to get it back.</p>
+      <p>Core Bluetooth gives you a lovely primitive for this: call <code>connect(peripheral)</code> on a peripheral that is <em>out of range</em> and it doesn't fail — it stays pending indefinitely and fires <code>didConnect</code> the moment the device reappears. So for an unexpected drop, the baseline is simply to re-issue the connect and let iOS watch for the device. But when the failure is something else — the device is powering down, rejecting you, mid-firmware-update — hammering <code>connect</code> in a tight loop wastes the radio. Wrap it in <strong>exponential backoff</strong>: retry quickly at first, then back off, with a cap and a little jitter so a fleet of phones doesn't reconnect in lockstep.</p>
+
+      <pre><code>func centralManager(_ central: CBCentralManager,
+                    didDisconnectPeripheral peripheral: CBPeripheral,
+                    error: Error?) {
+    state = .disconnected
+    guard shouldStayConnected else { return }   // user chose to disconnect → stop
+
+    let delay = min(pow(2.0, Double(retryCount)), 30) // 1, 2, 4, 8 … capped 30s
+        + Double.random(in: 0...0.5)                  // jitter to avoid a thundering herd
+    retryCount += 1
+
+    bleQueue.asyncAfter(deadline: .now() + delay) { [weak self] in
+        guard let self, self.shouldStayConnected else { return }
+        // A pending connect resolves as soon as the device is back in range.
+        self.manager.connect(peripheral, options: nil)
+    }
+}
+
+func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+    retryCount = 0                               // reset the backoff on success
+    state = .discoveringServices
+    peripheral.discoverServices([serviceUUID])
+}</code></pre>
+
+      <p>Two things make this robust in the field. Keep a <code>shouldStayConnected</code> intent flag so you never fight a deliberate disconnect — if the user tapped "disconnect," you stop retrying immediately. And reset <code>retryCount</code> to zero on every successful connect, so a device that flaps once doesn't inherit a 30-second penalty for the rest of the session.</p>
+
+      <h2>Respect flow control on writes</h2>
+      <p>If your app sends data <em>to</em> the device — streaming a config blob, pushing a firmware chunk — you'll reach for <code>writeWithoutResponse</code> because it's fast: no ACK per packet. But "without response" does not mean "without limits." There's a transmit queue underneath, and if you fire writes in a <code>for</code> loop faster than the radio can drain it, packets are silently dropped. No error. No callback. The device just receives garbage, and you spend an afternoon blaming the firmware.</p>
+      <p>The fix is to honour the framework's own backpressure signal. Before each write, check <code>peripheral.canSendWriteWithoutResponse</code>. When it returns <code>false</code>, <em>stop</em>, and wait for the <code>peripheralIsReady(toSendWriteWithoutResponse:)</code> delegate callback before resuming. It's a simple producer/consumer handshake, and it's the difference between a transfer that completes and one that corrupts intermittently on exactly the devices you can't reproduce.</p>
+
+      <pre><code>private var pending = ArraySlice&lt;Data&gt;()
+
+func sendChunks(_ chunks: [Data], to peripheral: CBPeripheral,
+                _ characteristic: CBCharacteristic) {
+    pending = chunks[...]
+    drain(peripheral, characteristic)
+}
+
+private func drain(_ peripheral: CBPeripheral, _ characteristic: CBCharacteristic) {
+    while peripheral.canSendWriteWithoutResponse, let chunk = pending.first {
+        peripheral.writeValue(chunk, for: characteristic, type: .withoutResponse)
+        pending = pending.dropFirst()
+    }
+    // Ran dry on the radio, not on data → wait for the ready callback.
+}
+
+func peripheralIsReady(toSendWriteWithoutResponse peripheral: CBPeripheral) {
+    guard let characteristic = writeCharacteristic else { return }
+    drain(peripheral, characteristic)            // resume exactly where we paused
+}</code></pre>
+
+      <p>One more knob worth knowing: <code>maximumWriteValueLength(for: .withoutResponse)</code> tells you the largest payload that fits in a single packet given the negotiated MTU. Chunk to that size. Hand <code>writeValue</code> something larger and behaviour gets implementation-defined fast.</p>
+
+      <h2>Design the UI for a link that fails</h2>
+      <p>All of the above is plumbing. The part users actually feel is how the interface behaves while the radio misbehaves — and this is where I see otherwise solid apps fall down. A few principles I hold to:</p>
+      <ul>
+        <li><strong>Be optimistic, then reconcile.</strong> When the user toggles a switch on the device, reflect it in the UI immediately and send the write in the background. If the write fails or times out, roll the UI back and tell them. A control that freezes for two seconds on every tap feels broken even when it's working.</li>
+        <li><strong>Every command needs a timeout.</strong> Core Bluetooth will let a connect or a read hang forever. Wrap each operation in a timeout you control — a few seconds — and surface a retry rather than an eternal spinner.</li>
+        <li><strong>Make "disconnected" a real, legible state.</strong> Not a generic error alert. A persistent, calm banner — "Reconnecting…" — that disappears on its own when the backoff loop succeeds. Users tolerate a flaky link far better when the app is visibly, honestly handling it.</li>
+        <li><strong>Make retries idempotent.</strong> Since you're reconnecting and replaying automatically, a command must be safe to send twice. Design the protocol so a duplicated "unlock" or "set brightness to 40" does no harm.</li>
+      </ul>
+      <p>The throughline is that the user should never have to think about Bluetooth. They think about the lock, the sensor, the light. The connection is your problem, and the best Bluetooth UX is one where the seams — the drops, the reconnects, the retries — are invisible because you handled them before they reached the screen.</p>
+
+      <h2>Build for the radio to fail</h2>
+      <p>If there's one mindset shift that separates BLE code that survives the App Store from code that floods your support inbox, it's this: stop treating disconnection as the exception and start treating it as the steady state you happen to recover from. Wait for <code>.poweredOn</code>. Walk the discovery chain one async hop at a time. Opt into state restoration so a pocketed phone keeps its connection. Reconnect with backoff and a clear intent flag. Honour flow control on writes. And wrap the whole thing in a UI that stays calm and honest when the link goes quiet.</p>
+
+      <p>None of it is exotic — it's a dozen small, defensive habits, each easy to skip on a desk where the device is a foot away and the battery is full. The radio doesn't care about your desk. It will drop the connection at the worst possible moment, on a device you can't reproduce, in a building you've never been in. Write the code that assumes it already has, and the failures stop being incidents and become just another Tuesday.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

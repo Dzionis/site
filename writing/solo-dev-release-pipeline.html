@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<!-- Sample post — written to demonstrate the mechanism. Copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A release pipeline for a solo dev · Dzionis Brek</title>
+<meta name="description" content="The release pipeline I run as a team of one: fastlane lanes for build, sign, screenshots and TestFlight; match for code signing; and Xcode Cloud as the lower-maintenance alternative." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="A release pipeline for a solo dev" />
+<meta property="og:description" content="Fastlane plus Xcode Cloud, end to end — what's actually worth automating when you ship alone, and the boring checklist that prevents the dumb mistakes." />
+<meta property="og:url" content="https://dzionis.by/writing/solo-dev-release-pipeline.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Process · CI/CD</span>
+      <h1>A release pipeline for a solo dev</h1>
+      <div class="post-meta">
+        <span>January 6, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Fastlane</span>
+        <span class="chip">Xcode Cloud</span>
+        <span class="chip">CI/CD</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">When you ship alone, the release isn't the hard part — remembering all twelve steps of the release at 11pm, with one of them silently wrong, is. After a decade of doing this on teams, here's the pipeline I run now as a company of one, and the parts I deliberately left un-automated.</p>
+
+      <p>On a team, a botched release is annoying but survivable — someone notices, someone reverts, the on-call person sighs. Solo, there's no one to notice. If I push a build signed with the wrong profile, or upload a binary with last week's screenshots, the first feedback I get is a rejection email two days later or a one-star review. So my bar for automation isn't "is this clever" — it's "would I get this wrong if I were tired." That covers a surprising amount of the release.</p>
+
+      <h2>What's actually worth automating</h2>
+      <p>The trap with CI is automating the interesting bits and leaving the error-prone bits manual. The interesting bits — building, running tests — you'd notice if they broke. It's the <em>boring, repetitive, easy-to-fumble</em> steps that bite you. For an App Store release, those are:</p>
+      <ul>
+        <li><strong>Bumping the build number.</strong> Forget it and the upload bounces. Do it by hand and you'll eventually fat-finger it.</li>
+        <li><strong>Code signing.</strong> The single most common way to lose an hour. Wrong cert, expired profile, a teammate (or past you) who regenerated something.</li>
+        <li><strong>Screenshots.</strong> Twelve locales × six device sizes is hundreds of images. Nobody does that by hand twice.</li>
+        <li><strong>The upload itself</strong>, plus pushing metadata so the listing matches the binary.</li>
+      </ul>
+      <p>Everything there is mechanical, has a correct answer, and punishes mistakes after a delay. That's the exact profile of work to hand to a script. So the first thing I set up on any new product is fastlane.</p>
+
+      <h2>Code signing without tears: match</h2>
+      <p>Let me start with signing, because it's the thing that drove me to fastlane in the first place. Xcode's "automatically manage signing" is fine until it isn't — until you switch Macs, or a certificate expires mid-release, or you genuinely cannot remember which of three provisioning profiles is the live one. On a team it's worse: everyone regenerates certs and steps on each other.</p>
+      <p><a href="https://docs.fastlane.tools/actions/match/">match</a> fixes this with one idea: store your certificates and profiles in a private, <em>encrypted</em> git repo, and have every machine pull from there instead of minting its own. The certs live in one place, encrypted with a passphrase, and your build machine just checks them out read-only. New laptop? <code>match development</code> and you're signed in a minute. Signing stops being a source of surprise and becomes a checkout step.</p>
+
+      <div class="callout">
+        <span class="clabel">One caveat</span>
+        <p>Run <code>match nuke</code> only when you understand exactly what it revokes — it will invalidate every certificate of that type on your account, and any build or pipeline still relying on the old one breaks immediately. Solo, that's just you; on a team it's everyone. Treat it as a deliberate reset, never a quick fix.</p>
+      </div>
+
+      <h2>The fastlane lanes I actually use</h2>
+      <p>A lane is a named sequence of steps. I keep two that matter — <code>beta</code> for TestFlight and <code>release</code> for the App Store — plus a private helper they share. The whole point is that a release becomes one command I can run without thinking, which is exactly the state I want to be in at 11pm.</p>
+
+      <pre><code>default_platform(:ios)
+
+platform :ios do
+
+  # Shared setup: pull signing assets and bump the build number.
+  private_lane :prepare do
+    setup_ci if ENV["CI"]                 # keychain handling on CI
+    match(type: "appstore", readonly: true)
+    increment_build_number(
+      build_number: latest_testflight_build_number + 1
+    )
+  end
+
+  desc "Build and ship a TestFlight beta"
+  lane :beta do
+    prepare
+    build_app(
+      scheme: "iRunning",
+      export_method: "app-store"
+    )
+    upload_to_testflight(
+      skip_waiting_for_build_processing: true,
+      changelog: File.read("../changelog.txt")
+    )
+    slack(message: "New iRunning beta is on TestFlight 🏃") if ENV["SLACK_URL"]
+  end
+
+  desc "Screenshots, metadata, and App Store submission"
+  lane :release do
+    capture_screenshots                   # drives the UI test scheme
+    prepare
+    build_app(scheme: "iRunning", export_method: "app-store")
+    deliver(
+      submit_for_review: true,
+      automatic_release: false,           # I press the button myself
+      force: true,                        # skip the HTML preview prompt
+      precheck_include_in_app_purchases: false
+    )
+  end
+end</code></pre>
+
+      <p>A few things worth pointing out. The build number is derived from <code>latest_testflight_build_number + 1</code>, not from a counter in the repo — that way it's correct even if I cut a build from a different machine, and there's nothing to forget. Signing is <code>readonly: true</code> everywhere; the pipeline consumes certs, it never creates them. And <code>capture_screenshots</code> runs a dedicated UI test scheme that navigates the app and calls <code>snapshot()</code> at each screen, so the same Swift test produces every device size and locale. <code>deliver</code> then pushes those images <em>and</em> the text metadata up alongside the binary, so the listing can never drift out of sync with what I shipped.</p>
+
+      <h2>Xcode Cloud, the lower-maintenance alternative</h2>
+      <p>Self-hosted fastlane is powerful, but somebody maintains the host — and solo, that somebody is me. A Mac mini under the desk, or a CI runner, means Xcode updates, certificate renewals, the occasional "why did the keychain lock" evening. For a small app that overhead can outweigh the benefit.</p>
+      <p><a href="https://developer.apple.com/xcode-cloud/">Xcode Cloud</a> is Apple's answer: you define a <em>workflow</em> in Xcode — trigger on push to <code>main</code>, build this scheme, run these tests, deliver to TestFlight — and Apple runs it on their machines. No host to babysit, signing handled for you, and a free tier of compute hours that comfortably covers one product. Push a tag, and a beta shows up in TestFlight without my laptop being involved at all.</p>
+      <p>The trade-off is control. Xcode Cloud is great at the common path and awkward the moment you step off it — bespoke screenshot pipelines, exotic dependencies, anything you'd express as a custom fastlane action becomes a <code>ci_post_clone.sh</code> shell script you debug through the build log. So my rule of thumb: <strong>Xcode Cloud for the build-test-TestFlight loop, fastlane for the App Store submission</strong> with its screenshots and metadata. They compose fine — Xcode Cloud can even invoke a lane from its post-build script — and you get low maintenance where it's routine and full control where it's fiddly.</p>
+
+      <h2>The boring release checklist</h2>
+      <p>Automation handles the mechanical steps; a checklist handles the judgement ones. This lives in a text file in the repo, and I genuinely read it top to bottom every release. It's deliberately boring — that's the feature. It's not glamorous, and it has saved me from shipping garbage more than once:</p>
+      <ul>
+        <li>Version bumped and the <code>changelog.txt</code> written in human language, not git subjects.</li>
+        <li>Run on a real device, not just the simulator — at least the one flow I changed.</li>
+        <li>Screenshots regenerated <em>if</em> any UI moved (and a glance to confirm no text is clipped).</li>
+        <li>New permission strings or privacy keys present, if I touched anything sensitive.</li>
+        <li>The TestFlight build sat with me for a day before it became a release candidate.</li>
+        <li>App Store Connect: pricing, availability, and the "what's new" text are what I think they are.</li>
+      </ul>
+      <p>None of this needs a tool. It needs me to not skip it, and a list is how I don't.</p>
+
+      <h2>On not over-engineering</h2>
+      <p>The genuine risk here isn't too little CI — it's too much. It is very easy to spend a fortnight building a beautiful pipeline for an app that ships once a month, complete with parallel test matrices, fancy changelog generation, and a deploy dashboard nobody but you will ever see. That's procrastination wearing a hard hat. Time spent gold-plating the pipeline is time not spent on the product, and the product is the only thing your users feel.</p>
+      <p>So I keep it proportionate. Two lanes and a checklist will carry a solo product a long way. I don't add a stage until I've felt its absence — until something has actually gone wrong, or a step has annoyed me three times. The pipeline earns its complexity by paying for itself, not by looking impressive in a config file.</p>
+
+      <p>That's the whole thing: match so signing never surprises me, a couple of fastlane lanes so a release is one command, Xcode Cloud where I'd rather not own a build machine, and a dull little checklist for the parts that need a human. None of it is sophisticated. The payoff isn't sophistication — it's that the boring, error-prone half of shipping stops eating my evenings, and I get to spend that time on the app, which is the only reason any of this exists.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

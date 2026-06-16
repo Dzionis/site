@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<!-- Post — copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A remote-config paywall you can A/B test without shipping a build · Dzionis Brek</title>
+<meta name="description" content="How I drive paywall layout, copy, and pricing from a small server-side config so I can run experiments at the speed of a push instead of an App Store review." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="A remote-config paywall you can A/B test without shipping a build" />
+<meta property="og:description" content="Driving paywall layout and price from the server, keeping prices in StoreKit, and measuring lift honestly — without shipping a build per experiment." />
+<meta property="og:url" content="https://dzionis.by/writing/remote-config-paywall-ab.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Monetization · Growth</span>
+      <h1>A remote-config paywall you can A/B test without shipping a build</h1>
+      <div class="post-meta">
+        <span>October 6, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Firebase</span>
+        <span class="chip">A/B Testing</span>
+        <span class="chip">Paywalls</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The paywall is the single highest-leverage screen in a paid app, and for years I treated it like the one screen I couldn't touch without a week of lead time. Every headline tweak, every price test, every reorder of the feature bullets meant a new build, a new review, and a wait. That's backwards. Here's the setup I use now to change the paywall from a config push and measure whether it actually worked.</p>
+
+      <p>If you ship subscription apps, you already know the math: a one-point swing in trial-start rate, compounded across every install for the life of the app, dwarfs almost any feature you could build that sprint. So you want to experiment constantly. The problem is that a <em>hard-coded</em> paywall makes every experiment expensive. You write two variants, you gate them behind a flag, you submit, you wait two days for review, you wait another few days to collect enough data, and by the time you have an answer you've forgotten which build it shipped in. Do that ten times and a year is gone.</p>
+
+      <h2>The shape of the fix</h2>
+      <p>The fix is to stop encoding the paywall in Swift and start encoding it in data. Instead of a <code>PaywallView</code> with its strings, layout, and selected offer baked in, I ship a <em>renderer</em> — a view that takes a small <code>Codable</code> description and draws whatever it's told to. The description lives on the server. Change the JSON, push it, and every device that opens the paywall on its next launch draws the new one. No build, no review, no wait.</p>
+      <p>That description is deliberately small. It is not a layout engine and it is not HTML. It's a handful of fields the design can vary meaningfully without me writing new view code: a headline, a subhead, an ordered list of feature bullets, which products to show, which one is pre-selected, and the call-to-action label. If a future experiment genuinely needs a new <em>kind</em> of element, that's a build — but in practice 90% of what you want to test is copy and arrangement, and those are just fields.</p>
+
+      <pre><code>struct PaywallConfig: Codable, Equatable {
+    let id: String                 // names the experiment variant
+    let headline: String
+    let subhead: String
+    let bullets: [String]
+    let productIDs: [String]       // StoreKit product identifiers
+    let highlightedProductID: String
+    let ctaTitle: String
+    let footnote: String?
+}</code></pre>
+
+      <h2>The server names products. It never sends a price.</h2>
+      <p>This is the rule I'd tattoo on anyone building this: <strong>the config carries product <em>identifiers</em>, never prices.</strong> The string <code>"com.app.pro.yearly"</code> is safe to send over the wire. The string <code>"$39.99/year"</code> is a bug waiting to happen.</p>
+      <p>Prices belong to StoreKit, full stop. Apple already localises them — currency symbol, decimal convention, the works — and the App Store is the source of truth for what the user will actually be charged. If you put a price in your JSON, you now have two numbers that can disagree: the one in your config and the one in the payment sheet. The day they drift apart is the day you either confuse users or, worse, advertise a price you can't honour. So the renderer takes the <code>productIDs</code> from the config, asks StoreKit for those <code>Product</code> values, and reads <code>product.displayPrice</code> off the result. The server decides <em>which</em> products to show; StoreKit decides what they cost.</p>
+
+      <div class="callout">
+        <span class="clabel">The contract</span>
+        <p>Config sends product <em>IDs</em>. StoreKit sends <em>prices</em>. If a <code>productID</code> in the config doesn't resolve to a real <code>Product</code> — a typo, a product not yet approved, a region where it isn't sold — drop that offer rather than rendering an empty row. A paywall missing one button still converts; a paywall showing a blank price doesn't.</p>
+      </div>
+
+      <h2>Bucketing, and why it has to be stable</h2>
+      <p>An experiment needs two things: a way to split users into variants, and a guarantee that a given user stays in their variant. The first is easy. The second is where home-grown setups quietly fall apart.</p>
+      <p>I lean on Firebase Remote Config with A/B Testing for the assignment, because it solves stable bucketing for you — a user lands in a variant and stays there across launches, and the console wires the experiment up to an analytics goal. But the principle is the same whichever tool you use: <strong>assignment must be deterministic per user, not per session.</strong> If a user sees variant A on Monday and variant B on Tuesday, your data is poisoned — you can no longer attribute their eventual purchase to either one, and the test means nothing.</p>
+      <p>If you ever roll your own, the assignment is a hash of a stable identifier, not a random number:</p>
+
+      <pre><code>import CryptoKit
+
+func bucket(userID: String, experiment: String, variants: Int) -&gt; Int {
+    let seed = "\(experiment):\(userID)"
+    let digest = SHA256.hash(data: Data(seed.utf8))
+    // First 8 bytes of the digest as an unsigned integer.
+    let value = digest.prefix(8).reduce(into: UInt64(0)) { acc, byte in
+        acc = (acc &lt;&lt; 8) | UInt64(byte)
+    }
+    return Int(value % UInt64(variants))
+}</code></pre>
+
+      <p>Because the hash is pure, the same <code>userID</code> and <code>experiment</code> always return the same bucket — no stored state, no race on first launch, and adding a new experiment never reshuffles an existing one. (Salting with the experiment name is what keeps experiments independent; reuse a bare user-ID hash across two tests and you'll correlate them by accident.)</p>
+
+      <h2>Caching, and a config baked into the binary</h2>
+      <p>A server-driven paywall has an obvious failure mode: the screen that makes you money depends on a network call. First launch on a plane, a flaky connection, a Remote Config fetch that times out — in every one of those cases the paywall still has to render something. So there are three layers, in order of preference: a fresh value fetched this session, a cached value from last time, and a <em>fallback config compiled into the app bundle</em> as a last resort.</p>
+      <p>The bundled fallback is the part people skip, and it's the most important one. It guarantees the paywall is never blank, never blocked on the network, and always at least as good as the last build you shipped. Fetch in the background, apply the result to the next presentation, and never make the user wait on a spinner to find out whether they can subscribe. A slightly stale paywall beats no paywall every single time.</p>
+
+      <h2>Trust nothing: validate, then fall back</h2>
+      <p>The flip side of "anyone can change the paywall from a dashboard" is that anyone can <em>break</em> the paywall from a dashboard. A missing comma, an empty <code>bullets</code> array, a <code>highlightedProductID</code> that isn't in the <code>productIDs</code> list — any of these can sail out of the console and into production. The renderer has to treat the remote config as hostile input.</p>
+      <p>So I never render a config straight from the wire. I decode it, run it through a validator, and if anything is off I discard it and fall back to the cached or bundled config. The decode itself catches malformed JSON; the validator catches <em>well-formed but nonsensical</em> JSON, which is the failure that actually bites you. Here's the whole load path, fallback included:</p>
+
+      <pre><code>enum PaywallLoader {
+
+    /// Decode + validate a remote payload, falling back to the bundled
+    /// config if anything is wrong. The app is never left without a paywall.
+    static func load(remoteJSON: Data?) -&gt; PaywallConfig {
+        if let data = remoteJSON,
+           let config = try? JSONDecoder().decode(PaywallConfig.self, from: data),
+           isValid(config) {
+            return config
+        }
+        return bundled                       // last-resort, ships in the binary
+    }
+
+    /// Well-formed JSON can still be nonsense. Reject it before it renders.
+    static func isValid(_ c: PaywallConfig) -&gt; Bool {
+        guard !c.headline.isEmpty,
+              !c.bullets.isEmpty,
+              !c.productIDs.isEmpty,
+              c.productIDs.contains(c.highlightedProductID) else {
+            return false
+        }
+        return true
+    }
+
+    /// Compiled into the app bundle — the floor under every experiment.
+    static let bundled = PaywallConfig(
+        id: "fallback",
+        headline: "Unlock everything",
+        subhead: "One subscription, every feature.",
+        bullets: ["Unlimited projects", "Sync across devices", "No ads"],
+        productIDs: ["com.app.pro.yearly", "com.app.pro.monthly"],
+        highlightedProductID: "com.app.pro.yearly",
+        ctaTitle: "Start free trial",
+        footnote: "Cancel anytime."
+    )
+}</code></pre>
+
+      <p>Tag the returned config's <code>id</code> onto every analytics event the paywall fires — impression, product tap, purchase. That string is how you'll tell which variant a conversion belongs to, and crucially, the fallback shows up in your data as <code>"fallback"</code>. If that bucket is bigger than a rounding error, you've got a config delivery problem to chase, not a copy problem.</p>
+
+      <h2>Measuring lift without lying to yourself</h2>
+      <p>Now the hard part, which has nothing to do with Swift. You can push a paywall variant in seconds; that speed makes it tempting to push, glance at the dashboard an hour later, declare a winner, and move on. Don't. That's the fastest way to ship changes that do nothing — or quietly hurt.</p>
+      <p>Two disciplines keep the numbers honest. First, <strong>define the metric and the duration before you start</strong>, and write them down. The metric is usually trial-start rate or paid-conversion rate, attributed by the <code>id</code> you're already logging. The duration runs long enough to clear your sales cycle — at least a full week so weekday and weekend traffic both land, and longer if you're measuring conversion past a trial, because a seven-day trial means today's signups don't convert until next week.</p>
+      <p>Second, and this is the one everybody violates: <strong>don't peek.</strong> Checking the experiment repeatedly and stopping the moment it crosses significance inflates your false-positive rate enormously — run enough early peeks and a coin-flip difference will eventually look "significant" by chance. Pick the sample size up front, wait for it, and read the result once. Tools like Firebase A/B Testing compute the credible interval for you; your job is to leave it alone until it's done. A 0.4-point lift on ten thousand users is noise; the same lift on a million is real money — and only the sample size you fixed in advance tells you which one you're looking at.</p>
+
+      <p>None of this is exotic. A small <code>Codable</code> struct, a renderer that draws it, StoreKit for prices, a hash for buckets, three layers of caching with a fallback in the bundle, and the discipline to read the result only once. Put those together and the paywall stops being the screen you're afraid to touch. It becomes the screen you iterate on weekly — pricing, headline, the order of the bullets — at the speed of a config push instead of a release. That shift, more than any single winning variant, is what compounds.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

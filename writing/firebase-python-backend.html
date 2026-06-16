@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<!-- Sample post — written to demonstrate the mechanism. Copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A Python-on-Firebase backend for an iOS app · Dzionis Brek</title>
+<meta name="description" content="Firestore and Cloud Functions in Python from the PartyCam build — the data model, ID-token auth, security rules, FCM push, and an honest take on when a client-only app should stay client-only." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="A Python-on-Firebase backend for an iOS app" />
+<meta property="og:description" content="Firestore plus Cloud Functions in Python from the PartyCam build — and when a client-only app should grow a backend at all." />
+<meta property="og:url" content="https://dzionis.by/writing/firebase-python-backend.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">PartyCam · Backend</span>
+      <h1>A Python-on-Firebase backend for an iOS app</h1>
+      <div class="post-meta">
+        <span>March 10, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Firebase</span>
+        <span class="chip">Python</span>
+        <span class="chip">Cloud Functions</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">I write iOS apps for a living, and most of them never touch a server. PartyCam was the one that had to. The moment two phones at the same party need to see the same shared album, the photos can't live on one device anymore — and that's the moment a client-only app grows a backend. Here's the smallest one I could get away with.</p>
+
+      <p>PartyCam is a shared-camera app: you spin up an event, friends join with a code, and every photo anyone takes lands in one live album everyone can scroll. It sounds like a client app, and the camera and the UI are. But three requirements drag it onto a server, and they're the same three that drag most "client-only" apps onto one eventually: <strong>shared state that has to stay in sync across devices</strong>, <strong>logic you can't trust a client to run</strong>, and <strong>push notifications</strong>. I built the whole thing on Firebase, with the server logic in Python. This is what that looked like and where it bit back.</p>
+
+      <h2>Why a camera app needs a server at all</h2>
+      <p>For a long time PartyCam was a prototype that synced photos peer-to-peer over the local network. It demoed beautifully and fell apart the instant someone walked out of Wi-Fi range or joined ten minutes late. Shared, real-time data is the thing local sync is worst at. Once you accept that the album is a piece of state several devices read and write concurrently, you want one authoritative copy of it somewhere, and "somewhere" is a server.</p>
+      <p>The other two reasons showed up close behind. Some logic simply <em>can't</em> live on the client: when a guest joins with a 6-character code, something trusted has to check that code, confirm the event isn't full or expired, and add them — you can't ship that decision to a phone the user controls. And the headline feature, a buzz on everyone's lock screen when a new photo drops, is a push notification, which by definition originates from a server. Three requirements, one conclusion. The interesting question was how little backend I could write to satisfy them.</p>
+
+      <h2>Firestore: thinking in documents, not tables</h2>
+      <p>I reached for Firestore as the database, and the first thing to unlearn coming from SQL is the schema. There are no tables, rows, or joins. There are <strong>collections</strong> (think: folders) holding <strong>documents</strong> (think: JSON blobs with an ID), and documents can themselves hold <strong>subcollections</strong>. You model around how you'll <em>read</em> the data, not how you'd normalize it.</p>
+      <p>For PartyCam the shape fell out naturally. An <code>events</code> collection, one document per party, and each event document owns a <code>photos</code> subcollection:</p>
+      <ul>
+        <li><code>events/{eventId}</code> — name, owner UID, join code, created/expiry timestamps, a <code>members</code> map of UID → role.</li>
+        <li><code>events/{eventId}/photos/{photoId}</code> — the uploader's UID, a Cloud Storage path to the full image, a thumbnail URL, a caption, a timestamp.</li>
+      </ul>
+      <p>The win is that "show me this event's photos, newest first" is one query against one subcollection, and the iOS client can <em>subscribe</em> to it. Firestore's real-time listeners push every change down the socket, so a new photo on one phone appears on every other phone in well under a second without anyone hitting refresh. That live-listener behavior is most of why I picked Firestore over rolling my own API on top of Postgres — it hands you the real-time sync that was the whole point, for free.</p>
+
+      <h2>Cloud Functions in Python</h2>
+      <p>Server logic runs in Cloud Functions. Firebase added first-class Python support to its <code>firebase-functions</code> SDK, and since I write backends in Python by preference when I get the choice, that decided the language. You write plain functions, decorate them, and deploy with the Firebase CLI — no servers to provision, no Dockerfiles, scale-to-zero by default.</p>
+      <p>Two kinds of function carry the app. <strong>HTTPS callable functions</strong> are request/response endpoints the iOS app invokes directly — "join this event with this code" is one. <strong>Firestore triggers</strong> fire automatically when a document is created, updated, or deleted — "a photo was just written, go notify everyone" is one. The triggers are the part that feels like magic coming from a request/response world: you don't call them, the database calls them.</p>
+      <p>Here's the join endpoint — an HTTPS callable that validates the code server-side and adds the caller to the event. Note it never trusts the client for identity; Firebase hands it a verified UID:</p>
+
+      <pre><code>from firebase_functions import https_fn
+from firebase_admin import firestore, initialize_app
+
+initialize_app()
+
+@https_fn.on_call()
+def join_event(req: https_fn.CallableRequest) -&gt; dict:
+    # req.auth is populated by Firebase from the verified ID token.
+    # No auth == no entry. We never read a UID from the request body.
+    if req.auth is None:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.UNAUTHENTICATED,
+            "You must be signed in to join an event.",
+        )
+
+    uid = req.auth.uid
+    code = (req.data.get("code") or "").strip().upper()
+    if len(code) != 6:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.INVALID_ARGUMENT,
+            "A join code is six characters.",
+        )
+
+    db = firestore.client()
+    matches = (
+        db.collection("events")
+        .where("joinCode", "==", code)
+        .limit(1)
+        .get()
+    )
+    if not matches:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.NOT_FOUND,
+            "No event with that code.",
+        )
+
+    event = matches[0]
+    data = event.to_dict()
+    if data["expiresAt"] &lt; firestore.SERVER_TIMESTAMP:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.FAILED_PRECONDITION,
+            "That event has ended.",
+        )
+    if len(data.get("members", {})) &gt;= 50:
+        raise https_fn.HttpsError(
+            https_fn.FunctionsErrorCode.RESOURCE_EXHAUSTED,
+            "This event is full.",
+        )
+
+    # Add the caller as a member. Dotted keys update one map field in place.
+    event.reference.update({f"members.{uid}": "guest"})
+    return {"eventId": event.id, "name": data["name"]}</code></pre>
+
+      <p>That is the entire "join" feature. Everything that <em>must</em> be trusted — code lookup, expiry, capacity — happens here, where the user can't reach in and lie. The client just shows a text field and renders the result.</p>
+
+      <h2>Auth: Firebase Auth and verified ID tokens</h2>
+      <p>I didn't write a login system. Firebase Auth handles sign-in — Sign in with Apple, mostly, since this is an iOS app — and hands the client a signed <strong>ID token</strong>, a JWT that encodes who the user is. The iOS SDK attaches that token to every callable-function request automatically. On the server, the SDK verifies the signature and expiry for you and drops the result into <code>req.auth</code>. That's the <code>req.auth.uid</code> the join function leans on.</p>
+      <p>The rule I hold to, and the one I've watched people get wrong: <strong>the UID always comes from the verified token, never from the request body.</strong> The moment a function reads a <code>userId</code> field the client sent, any user can impersonate any other. Treat the request body as untrusted input — because it is — and the token as the only source of identity.</p>
+
+      <h2>Security rules are the real access control</h2>
+      <p>Here's the part that catches iOS engineers, and caught me: the iOS app talks to Firestore <em>directly</em> for reads and writes. It doesn't route every operation through a function. Listening to the photos subcollection is a direct connection from the phone to the database. So what stops a malicious client from just reading every event in the project, or writing photos into someone else's album?</p>
+      <p><strong>Firestore security rules.</strong> They are a small declarative language that runs on Google's servers and decides whether each read and write is allowed, and they — not your client code — are the actual access-control layer. Client checks are UX. Rules are security. The two are not interchangeable, and any access rule you only enforce in Swift is not enforced at all.</p>
+
+      <pre><code>rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /events/{eventId} {
+      // Only members of an event can read it.
+      allow read: if request.auth != null
+                  &amp;&amp; request.auth.uid in resource.data.members;
+
+      match /photos/{photoId} {
+        // Members can read the album.
+        allow read: if request.auth != null
+                    &amp;&amp; request.auth.uid in
+                       get(/databases/$(database)/documents/events/$(eventId)).data.members;
+
+        // You can only create a photo as yourself, in an event you're in.
+        allow create: if request.auth != null
+                      &amp;&amp; request.auth.uid == request.resource.data.uploaderUid
+                      &amp;&amp; request.auth.uid in
+                         get(/databases/$(database)/documents/events/$(eventId)).data.members;
+      }
+    }
+  }
+}</code></pre>
+
+      <div class="callout">
+        <span class="clabel">Hard-won</span>
+        <p>Write the rules <em>first</em>, and test them in the Firebase Emulator before any client touches production. A wide-open default rule shipped to the App Store is a data breach with a version number on it. I keep the rules in the repo next to the functions and treat a rules change like any other code change — reviewed, tested, deployed together.</p>
+      </div>
+
+      <h2>Push via FCM from a Firestore trigger</h2>
+      <p>Now the satisfying part, where the pieces click together. When a photo document is created, a Firestore trigger fires, looks up the event's members, and pushes a notification to each of them through <strong>Firebase Cloud Messaging</strong>. No client asked for this; the write itself caused it.</p>
+
+      <pre><code>from firebase_functions import firestore_fn
+from firebase_admin import firestore, messaging
+
+@firestore_fn.on_document_created(
+    document="events/{eventId}/photos/{photoId}"
+)
+def notify_on_photo(event: firestore_fn.Event) -&gt; None:
+    photo = event.data.to_dict()
+    event_id = event.params["eventId"]
+
+    db = firestore.client()
+    parent = db.collection("events").document(event_id).get().to_dict()
+
+    # Don't buzz the person who just took the photo.
+    recipients = [
+        uid for uid in parent.get("members", {})
+        if uid != photo["uploaderUid"]
+    ]
+
+    # Fan out device tokens. (Stored per user when they grant notifications.)
+    tokens: list[str] = []
+    for uid in recipients:
+        user = db.collection("users").document(uid).get()
+        tokens.extend(user.to_dict().get("fcmTokens", []) if user.exists else [])
+
+    if not tokens:
+        return
+
+    messaging.send_each_for_multicast(
+        messaging.MulticastMessage(
+            tokens=tokens,
+            notification=messaging.Notification(
+                title=parent["name"],
+                body="New photo just dropped 📸",
+            ),
+        )
+    )</code></pre>
+
+      <p>A photo lands in Firestore, every other phone's live listener updates the album instantly, and a beat later a push nudges anyone who isn't looking. Three Firebase products — Firestore, Functions, Cloud Messaging — doing one job each.</p>
+
+      <h2>Cost and cold starts, honestly</h2>
+      <p>Two things will surprise you on a serverless backend. The first is <strong>cold starts</strong>: a function that hasn't run recently has to spin up a fresh Python runtime, and the first request can take a second or two. For a fire-and-forget trigger like the push, nobody notices. For an interactive callable like <code>join_event</code>, a cold second is a visibly sluggish tap. If a path is latency-sensitive you can set <code>min_instances=1</code> to keep one warm — but that instance bills around the clock, so you're trading money for milliseconds. I keep warm instances only on the endpoints a user waits on.</p>
+      <p>The second is <strong>cost shape</strong>. Firestore bills per document read, write, and delete, and the bill is driven by your access <em>patterns</em>, not your data size. The classic trap is a real-time listener on a big collection that re-reads documents on every change — it's invisible in development with five test photos and a genuine line item at a real party with hundreds. Design queries to read only what's on screen, paginate, and watch the usage dashboard in the first week of real traffic like it's a production metric. It is one.</p>
+
+      <h2>When a client-only app should stay client-only</h2>
+      <p>I want to be honest here, because the reflex to add a backend is strong and often wrong. A backend is permanent operational weight: rules to maintain, functions to keep deployed, a bill, an attack surface, a thing that can be down. If your app doesn't have the three triggers — shared state across devices, logic that must be trusted, or server-originated push — you probably shouldn't build one.</p>
+      <p>Plenty of apps that <em>feel</em> like they need a server don't. If the data is one user's and only their devices need it, <strong>CloudKit</strong> or even iCloud key-value sync gives you cross-device sync with zero backend code and no bill. A single-player app with local persistence needs nothing at all. I've shipped apps where the right move was deleting a backend someone had added out of habit — the feature it powered could live entirely on-device, and removing it made the app faster, cheaper, and more private in one commit. Adding a server is a real decision with a real recurring cost, not a default.</p>
+
+      <p>PartyCam earned its backend, and the lesson I took from it is to build the <em>smallest</em> one that clears the bar. Lean on managed pieces — Firestore for synced state, Auth for identity, rules for access, one trigger for push — so the code you actually own and maintain is a handful of small Python functions, each doing the one thing a client genuinely cannot. When someone asks how to build the backend for their app, my first question isn't which database. It's whether they need one yet.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

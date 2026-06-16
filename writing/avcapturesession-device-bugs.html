@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>AVCaptureSession bugs that only show up on real devices · Dzionis Brek</title>
+<meta name="description" content="The simulator has no camera, so every AVCaptureSession bug — orientation, interruptions, thermal throttling, authorization — is one you won't see until you run on hardware." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="AVCaptureSession bugs that only show up on real devices" />
+<meta property="og:description" content="Orientation, interruptions, thermal throttling, and the authorization edge cases the simulator quietly lies about — and how to handle them." />
+<meta property="og:url" content="https://dzionis.by/writing/avcapturesession-device-bugs.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Camera · AVFoundation</span>
+      <h1>AVCaptureSession bugs that only show up on real devices</h1>
+      <div class="post-meta">
+        <span>April 21, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">AVFoundation</span>
+        <span class="chip">Camera</span>
+        <span class="chip">Debugging</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The iOS simulator has no camera. That single fact is the source of more late-night bug reports than anything else I've shipped — because it means every camera bug is, by definition, a bug you cannot see until the app is running on a phone. The simulator doesn't fail loudly. It lies politely.</p>
+
+      <p>Open an <code>AVCaptureSession</code> in the simulator and you get a black preview, no error, and a green checkmark on your test suite. Everything <em>looks</em> wired up. Then you build to a five-year-old iPhone, hand it to a tester, they rotate it, take a phone call, and the whole capture pipeline falls over. I've shipped 50-odd apps and a good chunk touch the camera; the failures cluster into the same handful of places every time. Here's the list I now check before any camera feature goes near TestFlight.</p>
+
+      <h2>Configure the session off the main thread, and bracket every change</h2>
+      <p>The first mistake is treating <code>AVCaptureSession</code> like a synchronous object you can poke from wherever you happen to be. Calling <code>startRunning()</code> on the main thread blocks it — sometimes for a few hundred milliseconds, sometimes longer on older hardware — and the user watches your UI freeze on launch. The fix is a dedicated serial queue that owns the session for its entire life. Every <code>addInput</code>, <code>addOutput</code>, <code>startRunning</code>, and <code>stopRunning</code> hops onto that queue.</p>
+      <p>The second mistake is mutating the graph without telling it. Any time you add or remove inputs and outputs, or change a connection, you wrap the work in <code>beginConfiguration()</code> / <code>commitConfiguration()</code>. The session batches the changes and applies them atomically; skip the brackets and you get a torn configuration where, say, the input is attached but the connection hasn't settled, and the first frame arrives rotated wrong or not at all.</p>
+
+      <pre><code>private let sessionQueue = DispatchQueue(label: "camera.session")
+private let session = AVCaptureSession()
+
+func configure() {
+    sessionQueue.async { [weak self] in
+        guard let self else { return }
+        session.beginConfiguration()
+        session.sessionPreset = .high
+
+        guard
+            let device = AVCaptureDevice.default(.builtInWideAngleCamera,
+                                                 for: .video, position: .back),
+            let input = try? AVCaptureDeviceInput(device: device),
+            session.canAddInput(input)
+        else {
+            session.commitConfiguration()   // always balance the begin
+            return
+        }
+        session.addInput(input)
+
+        let output = AVCaptureVideoDataOutput()
+        if session.canAddOutput(output) { session.addOutput(output) }
+
+        session.commitConfiguration()
+        session.startRunning()              // safe here — we're off main
+    }
+}</code></pre>
+
+      <p>Note the <code>canAddInput</code> / <code>canAddOutput</code> guards. On a real device these can return <code>false</code> for reasons the simulator never surfaces — the front camera doesn't support your preset, another app grabbed the hardware, the device is mid-thermal-shutdown. Check them, don't assume.</p>
+
+      <h2>Orientation is a connection property now, not a device one</h2>
+      <p>For years the answer to "why is my video sideways" was <code>AVCaptureConnection.videoOrientation</code>, mapped from the UIDevice or interface orientation by hand. That property is deprecated. The modern replacement is <code>videoRotationAngle</code> — a plain rotation in degrees (0, 90, 180, 270) that you set on the connection. It's clearer, but it moves the burden onto you: you have to decide the angle and react to rotation yourself.</p>
+      <p>The clean way to get the angle is <code>AVCaptureDevice.RotationCoordinator</code>. You hand it the device and the preview layer, and it publishes the correct angle for capture and for preview separately — they differ, which is exactly the subtlety people get wrong by hand. Observe its <code>videoRotationAngleForHorizonLevelCapture</code> and push the value to your output connection whenever it changes.</p>
+
+      <div class="callout">
+        <span class="clabel">Watch out</span>
+        <p>The preview layer and the photo/video output want <em>different</em> rotation angles, and applying the preview angle to your saved file is the classic "looks right on screen, saves rotated" bug. Use the coordinator's two separate properties — one for the layer, one for the output connection — rather than reusing a single angle for both.</p>
+      </div>
+
+      <h2>Interruptions are normal, not exceptional</h2>
+      <p>This is the category that bites hardest, because the simulator will never generate a single interruption. On a real phone they're constant: a call comes in, the user pulls down Control Center, a FaceTime request lands, Siri activates, the app slides into Split View on iPad, or it simply goes to the background. Each of these can suspend your session. iOS posts <code>AVCaptureSession.wasInterruptedNotification</code> with a reason in the <code>userInfo</code>, and <code>AVCaptureSession.interruptionEndedNotification</code> when it's over.</p>
+      <p>The bug I see most: the developer calls <code>startRunning()</code> in <code>viewWillAppear</code> and assumes the session stays running forever after. It doesn't. After an interruption ends, iOS does <em>not</em> always resume you automatically — and even when it does, you want to know, so you can hide your "camera unavailable" overlay. So you observe both notifications and respond. You also handle <code>runtimeError</code>, because a media-services reset (yes, that happens on device) tears the session down entirely and you have to rebuild it.</p>
+
+      <h2>Authorization can change underneath you</h2>
+      <p>Authorization looks simple — request access, get a yes or no — until you remember the user can walk into Settings while your app is suspended and revoke the camera permission, then swipe back. Your session is now running against a camera it's no longer allowed to use. The reasons multiply on real devices: <code>.denied</code>, <code>.restricted</code> (parental controls or an MDM profile, which you'll never hit on your own dev phone), or <code>.notDetermined</code> on a truly fresh install.</p>
+      <p>Always read <code>AVCaptureDevice.authorizationStatus(for: .video)</code> at the point you're about to configure, not once at launch. And handle the mid-session change: when the app returns to the foreground, re-check the status before assuming the preview is still valid. A denied camera mid-session manifests as frozen frames, not an exception — so you have to ask.</p>
+
+      <h2>Thermal throttling is real, and it's silent</h2>
+      <p>Run a capture session for fifteen minutes on a warm day — recording video, doing frame analysis, whatever — and the device heats up. iOS responds by throttling: the GPU clocks down, frame delivery slows, and if you're driving Metal or Vision off the video frames you'll see dropped frames and stutter long before anything crashes. The system tells you via <code>ProcessInfo.processInfo.thermalState</code> and the <code>thermalStateDidChangeNotification</code>.</p>
+      <p>The honest move is to degrade gracefully. At <code>.serious</code> I drop the frame rate and resolution; at <code>.critical</code> I stop nonessential work — pause the live filter, kill the secondary preview — and tell the user the device is hot rather than letting the app feel broken. This bug is invisible on the simulator (it has your Mac's cooling and an effectively infinite thermal budget) and invisible on a fresh, cool device in a five-minute demo. It only appears in the wild.</p>
+
+      <h2>Wiring interruption and rotation handling together</h2>
+      <p>Here's the skeleton I reuse — observers for interruptions, rotation, and thermal state, with the session work kept on its own queue. The point isn't the exact policy; it's that none of these handlers exist by default, and each one closes a gap the simulator hid from you.</p>
+
+      <pre><code>private let coordinator: AVCaptureDevice.RotationCoordinator
+
+func startObserving(output: AVCaptureVideoDataOutput) {
+    let nc = NotificationCenter.default
+
+    // Session was suspended (call, Control Center, backgrounding, Split View).
+    nc.addObserver(forName: .AVCaptureSessionWasInterrupted,
+                   object: session, queue: .main) { note in
+        let reason = note.userInfo?[AVCaptureSessionInterruptionReasonKey]
+        print("interrupted:", reason ?? "unknown")   // show an overlay here
+    }
+
+    // Interruption ended — resume on the session queue, not main.
+    nc.addObserver(forName: .AVCaptureSessionInterruptionEnded,
+                   object: session, queue: .main) { [weak self] _ in
+        self?.sessionQueue.async {
+            guard let self, !session.isRunning else { return }
+            session.startRunning()
+        }
+    }
+
+    // Media services reset / hardware error: rebuild from scratch.
+    nc.addObserver(forName: .AVCaptureSessionRuntimeError,
+                   object: session, queue: .main) { [weak self] note in
+        let err = note.userInfo?[AVCaptureSessionErrorKey] as? AVError
+        if err?.code == .mediaServicesWereReset { self?.configure() }
+    }
+
+    // Rotation: keep the output connection's angle current.
+    coordinator.observe(\.videoRotationAngleForHorizonLevelCapture,
+                        options: [.initial, .new]) { _, change in
+        guard let angle = change.newValue,
+              let conn = output.connection(with: .video),
+              conn.isVideoRotationAngleSupported(angle) else { return }
+        conn.videoRotationAngle = angle
+    }
+
+    // Thermal pressure: back off before the device forces it.
+    nc.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification,
+                   object: nil, queue: .main) { _ in
+        if ProcessInfo.processInfo.thermalState == .critical {
+            // pause filters, drop frame rate, tell the user it's hot
+        }
+    }
+}</code></pre>
+
+      <p>If there's one habit that's saved me more than any code snippet, it's this: test on the <em>oldest</em> device you still support, outdoors, on a hot day. That sentence covers almost everything the simulator won't. The old device exposes the thermal and main-thread-blocking problems, the outdoors exposes the real authorization and interruption flows you skip through on your desk, and the heat surfaces the throttling that fifteen minutes of recording will eventually trigger. The simulator is a fine place to write a camera feature. It is a terrible place to believe one works.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

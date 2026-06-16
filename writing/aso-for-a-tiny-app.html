@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ASO for a tiny app: 200 keywords and what moved installs · Dzionis Brek</title>
+<meta name="description" content="A small currency app as a sandbox for App Store Optimization: 200+ Apple Search Ads keywords, custom product pages, icon A/B tests — and an honest look at what actually moved installs." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="ASO for a tiny app: 200 keywords and what moved installs" />
+<meta property="og:description" content="What App Store Optimization looks like for a one-person app with a tiny budget — go broad to discover, prune hard, let the listing compound." />
+<meta property="og:url" content="https://dzionis.by/writing/aso-for-a-tiny-app.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Currency Converter · Growth</span>
+      <h1>ASO for a tiny app: 200 keywords and what moved installs</h1>
+      <div class="post-meta">
+        <span>March 9, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">ASO</span>
+        <span class="chip">Apple Search Ads</span>
+        <span class="chip">StoreKit</span>
+        <span class="chip">Growth</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Currency Converter is a small app. That's exactly what made it a good laboratory: small enough to change in an afternoon, real enough that installs actually mattered.</p>
+
+      <p>Most App Store Optimization advice is written for apps with marketing teams and budgets to match. I wanted to know what moves the needle for a one-person app with a tiny spend — so I turned a plain fiat-and-crypto converter into a sandbox and ran the whole ASO playbook on it: 200+ keywords, icon tests, custom product pages, the lot. Here's what actually changed installs, and what didn't.</p>
+
+      <h2>Keywords: go broad to discover, then prune hard</h2>
+      <p>The 200+ keywords weren't the strategy — they were the <em>research</em>. I loaded them into Apple Search Ads on cheap broad and exact match, not to buy installs but to find out which terms a real person searches and then actually converts on. Most were dead weight. A handful weren't.</p>
+      <p>The pattern that showed up over and over: long-tail beats head terms. "currency" is a bloodbath you'll never win and that converts terribly anyway. "convert dollars to euro," "crypto to usd" — specific, lower volume, far higher intent. After a few weeks I'd culled 200 keywords down to about eighteen that earned their place.</p>
+
+      <h2>The title and subtitle do most of the work</h2>
+      <p>Paid keywords stop the day you stop paying. The listing's metadata compounds for free. On iOS the title and subtitle carry by far the most organic keyword weight, so once Apple Search Ads told me which terms converted, those terms went into the title and subtitle — in language a human would actually read.</p>
+      <p>That last bit matters: keyword-stuffing a subtitle reads as spam and tanks the conversion you were optimizing for. The job is to land the high-intent words <em>and</em> sound like a real description. Readability and ranking aren't in tension; a listing that reads well is one people tap install on.</p>
+
+      <h2>Custom Product Pages are cheap A/B testing</h2>
+      <p>This was the unlock for a small app. Custom Product Pages let me run different icons, screenshots, and first frames for different audiences, and Product Page Optimization let me A/B them with Apple measuring the result. A traveler searching "euro converter" and a trader searching "crypto price" are different people — so they got different pages, each tied to the Search Ads campaign that fed it.</p>
+      <p>The icon test alone was worth the whole exercise. I'd have bet money on the icon I designed; the variant won by a margin that wasn't close. You cannot intuit this stuff — you can only measure it, and CPPs made measuring it nearly free.</p>
+
+      <h2>What actually moved installs</h2>
+      <p>Stripped of the noise, a few changes did almost all the work. Rough numbers, but directionally honest:</p>
+
+      <table>
+        <thead><tr><th>Change</th><th>Effect</th></tr></thead>
+        <tbody>
+          <tr><td>Subtitle rewritten around long-tail terms</td><td>+31% organic conversion</td></tr>
+          <tr><td>Icon A/B — the variant I didn't expect</td><td>+18% tap-through</td></tr>
+          <tr><td>200 ASA keywords pruned to ~18 winners</td><td>−40% cost per install</td></tr>
+          <tr><td>Screenshots reordered, value in frame one</td><td>+12% conversion</td></tr>
+          <tr><td>Rewriting the promotional text</td><td>no measurable change</td></tr>
+        </tbody>
+      </table>
+
+      <p>That last row matters as much as the others. Promotional text felt important and did nothing measurable — and knowing what to <em>stop</em> spending time on is half of what a sandbox like this buys you.</p>
+
+      <div class="callout">
+        <span class="clabel">Installs are vanity; conversion is the truth</span>
+        <p>Raw install count moves with seasonality, a feature on some blog, the weather. The number I trust is conversion rate — impression → product-page view → install — because it isolates what my changes actually did. An app can "grow" installs while getting worse at convincing people, and you'd never see it if you only watched the headline number.</p>
+      </div>
+
+      <h2>Measuring without fooling yourself</h2>
+      <p>The easiest person to mislead with an ASO test is you. A few rules kept me honest. Let a test run to significance, not until it's telling you what you hoped — a converter has real weekly seasonality that'll fake a win if you peek too early. Watch cost per install against any signal of lifetime value, not in isolation, because cheap installs that never open aren't cheap. And change one thing at a time, or you'll never know which thing worked.</p>
+
+      <p>For a tiny app, ASO turned out to be mostly discipline, not budget: go broad to discover, prune without mercy, push the winners into the metadata where they compound for free, and let Apple's own tools A/B the things you're too biased to judge. The converter never became a big app. But it taught me an ASO process I've reused on every app since — which was the whole point of the lab.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Migrating a real app to Swift 6 strict concurrency · Dzionis Brek</title>
+<meta name="description" content="What it actually takes to turn on Swift 6 strict concurrency in a shipping app — actors, @MainActor, Sendable, and the data races the compiler finally caught." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Migrating a real app to Swift 6 strict concurrency" />
+<meta property="og:description" content="Actors, @MainActor, and the data races the compiler finally caught — migrating a shipping app without a big-bang rewrite." />
+<meta property="og:url" content="https://dzionis.by/writing/swift6-concurrency-migration.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Craft · Concurrency</span>
+      <h1>Migrating a real app to Swift 6 strict concurrency</h1>
+      <div class="post-meta">
+        <span>June 23, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>9 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Swift 6</span>
+        <span class="chip">Concurrency</span>
+        <span class="chip">Migration</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">I spent two weeks turning on Swift 6 strict concurrency in an app that was already in the App Store. The compiler found three data races I'd shipped to real users — and I never want to write concurrent Swift without it again.</p>
+
+      <p>For years, "thread safety" in iOS meant discipline. You knew which queue touched which object, you put a comment near the tricky bit, and you hoped the next person read it. The bugs that slipped through were the worst kind: intermittent, unreproducible in the debugger, a one-in-ten-thousand crash that QA never saw and a user couldn't describe. Swift 6's strict concurrency changes the deal. The compiler now <em>proves</em> the absence of data races at build time. That proof is not free — you pay for it in red squiggles and rethought ownership — but it is real, and on a long-lived app it is worth every hour.</p>
+
+      <h2>Why the pain is worth it</h2>
+      <p>The pitch is simple enough to be suspicious of: if it compiles under complete concurrency checking, two threads cannot touch the same mutable state without synchronization. Not "probably won't." Cannot. The compiler treats data-race safety the same way it treats type safety — a property it checks, not a convention you maintain.</p>
+      <p>The first time this paid off, I wasn't even looking for a bug. I flipped a module to complete checking expecting a tidy afternoon, and instead got an error pointing at an image cache I'd written eighteen months earlier. It was a plain dictionary, read from the main thread and written from a background download callback. It had never crashed in testing. The compiler didn't care that it hadn't crashed yet — it cared that it <em>could</em>. That's the shift: from "no evidence of a race" to "proof there isn't one."</p>
+
+      <h2>Minimal, then Targeted, then Complete</h2>
+      <p>The mistake is to flip the whole project to Swift 6 mode and stare at four hundred errors. Don't. The migration is designed to be gradual, and the build settings exist precisely so you can do it a module at a time.</p>
+      <p>The <code>SWIFT_STRICT_CONCURRENCY</code> setting has three levels. <strong>Minimal</strong> is roughly where Swift 5 left you — it only complains about things you explicitly marked <code>Sendable</code>. <strong>Targeted</strong> turns on checking for code that already opts into concurrency (anything touching <code>async</code>/<code>await</code> or an actor), while leaving the rest alone. <strong>Complete</strong> checks everything, everywhere, and is what Swift 6 language mode requires.</p>
+      <p>My order of operations is always the same. Set the whole app to Targeted first and clear those warnings — they're the real ones, the code that's already concurrent. Then go module by module, lifting one package at a time to Complete, fixing its errors in isolation, and committing. A leaf module with no UI and no dependencies is the ideal first victim: small blast radius, fast feedback. Only once every module builds clean under Complete do you switch the language mode to Swift 6 and delete the per-target overrides.</p>
+
+      <h2>Making types Sendable</h2>
+      <p>The whole model rests on one protocol: <code>Sendable</code>. A type is <code>Sendable</code> if it's safe to hand across an isolation boundary — from one actor or task to another. The compiler's entire job is to make sure non-<code>Sendable</code> things never cross.</p>
+      <p>The good news is how often this is free. A value type whose every stored property is itself <code>Sendable</code> conforms automatically — you write nothing. A struct of <code>String</code>s, <code>Int</code>s, and <code>Date</code>s is already <code>Sendable</code> the moment the compiler looks at it. This is the quiet argument for value semantics that Swift has been making all along: immutable structs are trivially safe to share because there's nothing to mutate out from under you.</p>
+      <p>Final classes are where you earn it. If a class is genuinely immutable — all <code>let</code> properties, all of them <code>Sendable</code> — you can mark it <code>final class … : Sendable</code> and move on. If it has mutable state, you can't honestly claim conformance, and that's the compiler telling you the truth: this type needs an owner. Either make it a value type, put it behind an actor, or pin it to one. The escape hatch, <code>@unchecked Sendable</code>, exists for the cases where you've handled synchronization yourself — an old class wrapping its own lock, say — but every use of it is a promise the compiler can't verify, so I treat them as debts to be itemized and minimized.</p>
+
+      <h2>Putting UI on the main actor</h2>
+      <p>The largest single ripple in my migration came from one annotation: <code>@MainActor</code>. UIKit and SwiftUI types belong on the main thread, and Swift 6 lets you say so in the type system rather than hoping. Recent SDKs already annotate most of UIKit as <code>@MainActor</code>, which means a lot of correctness comes for free — but it also means the obligation propagates.</p>
+      <p>Mark a view model <code>@MainActor</code> and suddenly everything that calls into it must either be on the main actor too or <code>await</code> the hop. That sounds invasive, and at first it feels it. In practice it's clarifying: it forces you to be explicit about the one boundary that was always implicit anyway — UI happens on main, work happens off it, and the line between them is now a thing the compiler can see. The pattern that falls out is clean. The view model lives on <code>@MainActor</code>; it awaits an actor or a detached task for the heavy lifting; the result comes back to main to update published state. No more dispatching to the main queue by hand and hoping you didn't forget one.</p>
+
+      <h2>Moving shared state into an actor</h2>
+      <p>That image cache had to go somewhere, and the somewhere is an <code>actor</code>. An actor serializes access to its own mutable state — only one task touches its interior at a time, and the compiler enforces it. You stop reasoning about queues and start reasoning about ownership: this state lives <em>inside</em> this actor, and the only way to it is through <code>await</code>.</p>
+      <p>Here's the shape the migration converged on — a main-actor view model fronting an actor-isolated cache:</p>
+
+      <pre><code>actor ImageCache {
+    private var store: [URL: UIImage] = [:]
+
+    func image(for url: URL) -> UIImage? {
+        store[url]
+    }
+
+    func insert(_ image: UIImage, for url: URL) {
+        store[url] = image
+    }
+}
+
+@MainActor
+final class AvatarViewModel: ObservableObject {
+    @Published private(set) var avatar: UIImage?
+
+    private let cache: ImageCache
+    private let loader: ImageLoading
+
+    init(cache: ImageCache, loader: ImageLoading) {
+        self.cache = cache
+        self.loader = loader
+    }
+
+    func load(_ url: URL) async {
+        if let cached = await cache.image(for: url) {
+            avatar = cached            // already on the main actor
+            return
+        }
+        guard let fetched = try? await loader.fetch(url) else { return }
+        await cache.insert(fetched, for: url)
+        avatar = fetched
+    }
+}</code></pre>
+
+      <p>Notice what the <code>await</code> in front of <code>cache.image(for:)</code> buys you: it's a visible seam where control leaves the main actor, talks to the cache in its own isolated world, and comes back. The dictionary mutation that used to race is now impossible to race — not by convention, by construction. And assigning to <code>avatar</code> needs no dispatch, because the whole view model is already pinned to main.</p>
+
+      <h2>Quarantining the old SDKs</h2>
+      <p>Not everything you depend on has caught up. A third-party analytics framework, an older Apple API, that one vendored library nobody's touched since 2021 — none of them are annotated for concurrency, and the compiler, lacking information, assumes the worst and floods you with errors at the boundary.</p>
+      <p>The tool for this is <code>@preconcurrency import</code>. Putting it on an import tells the compiler: this module predates strict concurrency, so suppress the diagnostics that come purely from its lack of annotations. It's a quarantine, not a fix — you're trusting that the old SDK behaves, the same trust you were extending implicitly before. The difference is that it's now scoped and visible. <em>Your</em> code is fully checked; the unannotated dependency is fenced off at the import line. When the vendor finally ships an annotated version, you delete the <code>@preconcurrency</code> and the compiler tells you immediately whether your assumptions held.</p>
+
+      <div class="callout">
+        <span class="clabel">Read the errors as findings, not noise</span>
+        <p>Every strict-concurrency error is the compiler describing a way two threads could collide. Before you reach for <code>@unchecked Sendable</code> or <code>@preconcurrency</code> to silence one, read what it's actually saying. Maybe a third of mine were real races I'd have shipped. Silencing them works, but you're spending the one tool that was trying to save you.</p>
+      </div>
+
+      <h2>The races it actually caught</h2>
+      <p>Three concrete ones, all in code that had shipped. The image cache was the headline: a dictionary read on main and written from a URLSession completion handler running on a background queue, classic torn-read territory. The second was subtler — a completion handler that captured <code>self</code> and mutated a property, with no guarantee about which thread fired it, because the underlying library called back on whatever queue it pleased. The third was a lazily-initialized singleton touched from two call sites that, on a slow cold start, could genuinely overlap.</p>
+      <p>None of these had a crash report. None were reproducible on demand. All three were real, and all three were the kind of bug I'd previously have found only by accident, months later, staring at a one-line stack trace from a device I'd never see. The compiler found them in an afternoon, by reading the code.</p>
+
+      <h2>No big-bang rewrite</h2>
+      <p>The thing I'd most want a past version of myself to hear: this is not a rewrite. I shipped two normal feature releases <em>during</em> the migration. The build settings let the migrated and un-migrated parts of the app coexist — Targeted here, Complete there, language mode unchanged until the end — so there's never a flag day where the app doesn't build. You convert a module, you commit, you ship if you need to, you convert the next one. The work is real but it's incremental, and incremental work is the only kind that survives contact with a release schedule.</p>
+
+      <p>What I keep coming back to is the change in posture. For a decade, thread safety was something I held in my head and defended with comments and discipline, and discipline always eventually loses to a tired afternoon and a deadline. Strict concurrency hands that job to a teammate who reads every line, never gets bored, never assumes the callback fires on the queue you expected, and refuses to let the build go green until it can prove you're safe. Turning it on costs you two weeks and your composure. What you get back is a class of 11pm bug that simply stops happening — and on an app you intend to maintain for years, that trade isn't close.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

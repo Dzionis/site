@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mixing UIKit and SwiftUI in an app older than SwiftUI · Dzionis Brek</title>
+<meta name="description" content="How to bridge UIKit and SwiftUI in a long-lived codebase without a rewrite — which direction to cross the boundary, how to share state, and when to stop." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Mixing UIKit and SwiftUI in an app older than SwiftUI" />
+<meta property="og:description" content="Interop without a rewrite: which way to bridge, how to share state across the boundary, and when to stop migrating." />
+<meta property="og:url" content="https://dzionis.by/writing/uikit-swiftui-interop.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Craft · Architecture</span>
+      <h1>Mixing UIKit and SwiftUI in an app older than SwiftUI</h1>
+      <div class="post-meta">
+        <span>July 14, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">UIKit</span>
+        <span class="chip">SwiftUI</span>
+        <span class="chip">Migration</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The biggest app I maintain shipped its first version in 2016, three years before SwiftUI existed. There is no rewrite coming. There shouldn't be. Yet every new screen I add is SwiftUI — and the two frameworks coexist happily, because interop is a strategy I commit to, not a hack I apologise for.</p>
+
+      <p>If you've shipped iOS apps for any length of time, you have at least one of these: a codebase with a storyboard older than some of your colleagues, a hand-rolled navigation stack, a tab bar wired up in <code>AppDelegate</code>, and view controllers that have been patched so many times nobody dares touch the layout. It works. It makes money. And rewriting it from scratch is how you spend a year shipping nothing and reintroducing bugs you fixed in 2019.</p>
+
+      <p>The good news is that Apple built UIKit and SwiftUI to talk to each other deliberately, in <em>both</em> directions, and the bridges are stable production tools rather than escape hatches. The skill isn't knowing the APIs — there are only a handful. It's deciding which way to cross the boundary, and resisting the urge to migrate things that don't need it.</p>
+
+      <h2>Two bridges, opposite directions</h2>
+      <p>There are really only two things to learn, and they mirror each other:</p>
+      <ul>
+        <li><strong><code>UIHostingController</code></strong> takes a SwiftUI <code>View</code> and hands you back a <code>UIViewController</code>. This is how you drop a new SwiftUI screen into an existing UIKit navigation or tab stack — the shell stays UIKit, the content is SwiftUI.</li>
+        <li><strong><code>UIViewRepresentable</code></strong> and <strong><code>UIViewControllerRepresentable</code></strong> go the other way: they wrap a UIKit view or controller so it appears inside a SwiftUI hierarchy as if it were native. This is how you reuse a battle-tested UIKit component — a camera preview, an <code>MKMapView</code>, a custom-drawn control — from new SwiftUI code.</li>
+      </ul>
+      <p>That's the whole vocabulary. Everything else is knowing which one to reach for, and that follows from one question: <strong>where does the screen live, and what owns it?</strong></p>
+
+      <h2>Dropping SwiftUI into a UIKit shell</h2>
+      <p>For a long-lived app, this is the direction you'll use ninety percent of the time. The app's skeleton — the tab bar, the root navigation controller, the deep-link routing — stays exactly where it is. When you build a new settings screen, a new onboarding flow, a new detail view, you write it in SwiftUI and wrap it for presentation:</p>
+
+      <pre><code>import UIKit
+import SwiftUI
+
+final class SettingsCoordinator {
+
+    private let navigation: UINavigationController
+
+    init(navigation: UINavigationController) {
+        self.navigation = navigation
+    }
+
+    func showAppearanceSettings() {
+        let view = AppearanceSettingsView(store: settingsStore)
+        let host = UIHostingController(rootView: view)
+        host.title = "Appearance"
+
+        // It's just a UIViewController now — push it like any other.
+        navigation.pushViewController(host, animated: true)
+    }
+}</code></pre>
+
+      <p>From the navigation controller's point of view, <code>host</code> is an ordinary view controller. It pushes, pops, and shows up in the back stack with the right title. Your SwiftUI view doesn't know or care that its parent is a UIKit <code>UINavigationController</code> from 2016. The seam is invisible to users and almost invisible to the code on either side.</p>
+
+      <p>One detail that trips people up: by default a <code>UIHostingController</code> draws its own background, which can fight with a translucent navigation bar or a custom tab background. If your SwiftUI content is meant to sit on the system background, that's fine; if you've got a custom-coloured shell, set <code>host.view.backgroundColor = .clear</code> after creating it and let the UIKit chrome show through.</p>
+
+      <div class="callout">
+        <span class="clabel">Navigation ownership</span>
+        <p>Pick one navigation system per flow and let it win. If a UIKit <code>UINavigationController</code> owns the stack, push hosting controllers into it and do <em>not</em> also wrap your SwiftUI screens in a <code>NavigationStack</code> — you'll get double bars and two competing back buttons. SwiftUI screens inside a UIKit stack should be plain content; the chrome belongs to UIKit.</p>
+      </div>
+
+      <h2>Bringing UIKit into SwiftUI</h2>
+      <p>The other direction comes up less often but matters more when it does, because the components you want to reuse are usually the ones that took weeks to get right. Camera preview layers, an <code>MKMapView</code> with a decade of annotation logic, a signature-capture control, a video player with exact buffering behaviour — none of these have an equally mature SwiftUI equivalent, and reimplementing them is pure risk with no upside.</p>
+
+      <p><code>UIViewRepresentable</code> wraps a single view. You implement <code>makeUIView</code> to create it once, <code>updateUIView</code> to push SwiftUI state changes into it, and — the part people skip — a <code>Coordinator</code> to carry events back out. The coordinator is how a UIKit delegate callback becomes something SwiftUI can react to. Here's a map view that reports the region back to its SwiftUI parent:</p>
+
+      <pre><code>import SwiftUI
+import MapKit
+
+struct RouteMapView: UIViewRepresentable {
+
+    let route: [CLLocationCoordinate2D]
+    @Binding var visibleRegion: MKCoordinateRegion
+
+    func makeUIView(context: Context) -&gt; MKMapView {
+        let map = MKMapView()
+        map.delegate = context.coordinator          // delegate → Coordinator
+        return map
+    }
+
+    func updateUIView(_ map: MKMapView, context: Context) {
+        // SwiftUI state changed — reconcile the UIKit view.
+        map.removeOverlays(map.overlays)
+        map.addOverlay(MKPolyline(coordinates: route, count: route.count))
+    }
+
+    func makeCoordinator() -&gt; Coordinator {
+        Coordinator(self)
+    }
+
+    final class Coordinator: NSObject, MKMapViewDelegate {
+        private let parent: RouteMapView
+        init(_ parent: RouteMapView) { self.parent = parent }
+
+        // UIKit callback → write back into the SwiftUI binding.
+        func mapView(_ map: MKMapView, regionDidChangeAnimated: Bool) {
+            parent.visibleRegion = map.region
+        }
+
+        func mapView(_ map: MKMapView,
+                     rendererFor overlay: MKOverlay) -&gt; MKOverlayRenderer {
+            let r = MKPolylineRenderer(overlay: overlay)
+            r.strokeColor = .systemGreen
+            r.lineWidth = 4
+            return r
+        }
+    }
+}</code></pre>
+
+      <p>The mental model that keeps this clean: <code>makeUIView</code> runs <em>once</em>, <code>updateUIView</code> runs <em>every time</em> the SwiftUI state it depends on changes. So all your one-time setup — delegate assignment, registering reuse identifiers, configuring gestures — goes in <code>make</code>. Anything that reflects current state goes in <code>update</code>, and it has to be idempotent, because it'll be called more often than you expect. The coordinator is the only object that outlives a single <code>update</code> pass, which is why delegates and target-action handlers have to live there.</p>
+
+      <p><code>UIViewControllerRepresentable</code> is the same shape for a whole view controller — reach for it when the thing you're wrapping is already a controller with its own lifecycle, like <code>UIImagePickerController</code>, an <code>AVPlayerViewController</code>, or one of your own legacy screens you want to surface inside a new SwiftUI flow.</p>
+
+      <h2>Sharing state across the seam</h2>
+      <p>Bridging views is the easy half. The half that decides whether the codebase stays sane is <em>state</em>, because a screen is useless if it can't read and write the same data as the rest of the app. You have three tools, and they layer:</p>
+      <ul>
+        <li><strong>An <code>ObservableObject</code> (or <code>@Observable</code> class) as the shared source of truth.</strong> Because it's a reference type, the same instance can be handed to a SwiftUI view via <code>@StateObject</code>/<code>@ObservedObject</code> <em>and</em> held by a UIKit view controller. Both sides observe it; both sides mutate it; neither owns it.</li>
+        <li><strong>Combine or <code>async</code> sequences for the UIKit side to listen.</strong> A view controller can <code>sink</code> on a published property, or iterate an <code>AsyncStream</code>, and update its own views imperatively when the shared model changes. This is how a legacy screen reacts to something a new SwiftUI screen did.</li>
+        <li><strong>The Coordinator for event callbacks</strong> in the SwiftUI-wraps-UIKit direction, as in the map above — delegate methods write straight back into a <code>@Binding</code>.</li>
+      </ul>
+      <p>The principle underneath all three: <strong>don't try to push view state across the boundary, push <em>model</em> state.</strong> The moment you find yourself reaching into a hosting controller to read a SwiftUI <code>@State</code>, or poking a UIKit view's properties from SwiftUI, stop — that data wants to live in a shared model that both sides observe. Keep the seam at the model layer and the views on each side stay blissfully ignorant of each other.</p>
+
+      <h2>The pitfalls nobody warns you about</h2>
+      <p>Most interop pain clusters around a few mismatches between the two frameworks' assumptions:</p>
+      <ul>
+        <li><strong>Intrinsic sizing.</strong> SwiftUI asks a view how big it wants to be; UIKit views don't always have a confident answer. A <code>UIViewRepresentable</code> with no intrinsic content size can collapse to zero height inside a <code>VStack</code>. Give the wrapped view real layout constraints, or implement <code>sizeThatFits</code> in newer SDKs, rather than wondering why your control vanished.</li>
+        <li><strong>Lifecycle mismatch.</strong> UIKit's <code>viewDidAppear</code>/<code>viewWillDisappear</code> and SwiftUI's <code>onAppear</code>/<code>onDisappear</code> do <em>not</em> fire in lockstep, especially with hosting controllers nested in containers. Don't assume a hosting controller's appearance callbacks line up with the SwiftUI view's. Drive lifecycle work from whichever framework actually owns the screen.</li>
+        <li><strong>Safe area and keyboard.</strong> A hosting controller usually respects safe areas, but a representable wrapping a full-bleed view (a camera preview, a map) may need <code>ignoresSafeArea()</code> on the SwiftUI side, while the UIKit view still wants its own inset handling. Decide which layer owns the insets and disable the other.</li>
+        <li><strong>Navigation, again.</strong> Worth repeating because it's the most common bug: two navigation systems fighting over the same stack. One owner per flow.</li>
+      </ul>
+
+      <h2>Choosing the direction, and when to stop</h2>
+      <p>The decision rule I use is boring and reliable. <strong>New screens are SwiftUI, hosted in the existing UIKit shell.</strong> That's the default, and it's where the productivity win lives — declarative layout, previews, less boilerplate. You go the other way, wrapping UIKit in SwiftUI, only when a specific component is mature, fiddly, and has no good SwiftUI replacement; reusing it is cheaper and safer than rebuilding it.</p>
+
+      <p>Migrate leaf-first: the screens at the tips of the navigation tree, the ones with the fewest things depending on them, are where SwiftUI pays off fastest and the blast radius of a mistake is smallest. Leave the shell — the tab bar, the root coordinator, the deep-link router — in UIKit for a long time, possibly forever. The shell is plumbing; rewriting plumbing that works buys you nothing a user will ever notice.</p>
+
+      <p>And knowing when to <em>stop</em> is its own discipline. A screen that's stable, rarely touched, and free of bugs has no business being migrated just to make the codebase uniform. "All SwiftUI" is not a goal; a shipping app that's cheap to change is the goal. I have UIKit view controllers in production that I haven't opened in two years, and that's exactly as it should be — they earn their keep without costing me attention.</p>
+
+      <p>So treat interop as the architecture, not a transitional embarrassment. The two frameworks will share an app for the rest of that app's life, and that's fine — Apple ships them side by side for the same reason. Pick one owner per navigation flow, keep shared state in a model both sides observe, bridge in whichever direction the component argues for, and migrate only where it pays. Do that and the question stops being "when do we finish the rewrite" and becomes "what's the next screen" — which is a much better question to be answering.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

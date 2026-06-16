@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Keeping a watchOS workout alive without wrecking the battery · Dzionis Brek</title>
+<meta name="description" content="How HKWorkoutSession keeps a fitness app running on the wrist, and what actually drains the battery on a two-hour run — GPS poll rate, screen wake-ups, and heart-rate cadence." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Keeping a watchOS workout alive without wrecking the battery" />
+<meta property="og:description" content="HKWorkoutSession is what keeps a fitness app alive on the wrist — here's the lifecycle, and how to make a long run cheap on battery." />
+<meta property="og:url" content="https://dzionis.by/writing/watchos-background-battery.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · watchOS</span>
+      <h1>Keeping a watchOS workout alive without wrecking the battery</h1>
+      <div class="post-meta">
+        <span>February 24, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">watchOS</span>
+        <span class="chip">HealthKit</span>
+        <span class="chip">Performance</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">A normal watchOS app gets suspended within seconds of the wrist dropping. A fitness app can't afford that — a two-hour run has to keep counting the whole way. The trick isn't a background mode. It's HealthKit, and then a long, unglamorous fight with the battery.</p>
+
+      <p>The first hard lesson of building iRunning for the watch was that the platform actively wants to kill you. watchOS is ruthless about reclaiming a tiny battery: lower your wrist and the app suspends, the timers stop, and Core Location goes quiet. For most apps that's correct behaviour. For one whose entire job is to measure the next ninety minutes without a single gap, it's an existential problem. The good news is that Apple solved it for us — just not where most people look first.</p>
+
+      <h2>Why a normal app gets suspended — and a workout doesn't</h2>
+      <p>People come to this from the iOS side and reach for background modes: the <code>location</code> capability, audio tricks, the old standbys. On watchOS that's the wrong tool, and it shows. The system treats a backgrounded app as a candidate for suspension regardless of how many capabilities you've ticked, and you'll spend a week fighting a fight you can't win.</p>
+      <p>The thing that actually changes the rules is an <strong>active <code>HKWorkoutSession</code></strong>. When you start one, you're telling the system "the person is exercising and this app is the one recording it." That declaration is what keeps your process alive in the background, keeps your location updates flowing, and keeps your timers ticking. It's not a hack you're getting away with — it's the sanctioned path, and the system grants it because a workout is exactly the kind of long-running, user-initiated activity the watch was built for. The corollary is the part people miss: the moment that session ends, the privileges evaporate and you're back to being a suspendable app.</p>
+
+      <h2>The session lifecycle: start, pause, end</h2>
+      <p>A workout session is a small state machine, and you have to respect its states or HealthKit will. You build it from an <code>HKWorkoutConfiguration</code>, attach a <em>builder</em> that collects the samples, and drive it through <code>.running</code>, <code>.paused</code>, and <code>.ended</code>. Pausing genuinely matters: a paused session stops accruing active energy and, more to the point for this article, is your cue to back off the sensors. Ending is final — you can't resume an ended session, so a "pause" button must map to <code>pause()</code>, never to <code>end()</code>.</p>
+
+      <pre><code>import HealthKit
+
+final class WorkoutController: NSObject {
+    private let store = HKHealthStore()
+    private var session: HKWorkoutSession?
+    private var builder: HKLiveWorkoutBuilder?
+
+    func startRun() throws {
+        let config = HKWorkoutConfiguration()
+        config.activityType = .running
+        config.locationType = .outdoor
+
+        let session = try HKWorkoutSession(healthStore: store,
+                                           configuration: config)
+        let builder = session.associatedWorkoutBuilder()
+        builder.dataSource = HKLiveWorkoutDataSource(healthStore: store,
+                                                     workoutConfiguration: config)
+        session.delegate = self
+        builder.delegate = self
+
+        let start = Date()
+        session.startActivity(with: start)          // privileges begin here
+        builder.beginCollection(withStart: start) { _, _ in }
+
+        self.session = session
+        self.builder = builder
+    }
+
+    func pause()  { session?.pause() }              // back off the sensors
+    func resume() { session?.resume() }
+
+    func end() {
+        session?.end()                              // privileges end here
+        builder?.endCollection(withEnd: Date()) { [weak self] _, _ in
+            self?.builder?.finishWorkout { _, _ in }   // persist to HealthKit
+        }
+    }
+}</code></pre>
+
+      <p>Letting <code>HKLiveWorkoutBuilder</code> own the heart-rate and energy samples is worth it. It pulls from the same pipeline the built-in Workout app uses, which means it's already tuned for battery, and it writes a real <code>HKWorkout</code> to the health store at the end — the thing that makes a run show up in the Fitness rings instead of living only inside your app.</p>
+
+      <h2>What actually drains the battery on a two-hour run</h2>
+      <p>Once the session keeps you alive, the problem inverts. You <em>can</em> run for two hours; the question is whether the watch survives it. I instrumented a long session and the culprits, in rough order of damage, were never surprising in hindsight:</p>
+      <ul>
+        <li><strong>GPS.</strong> Core Location with full accuracy, polling every second, is the single most expensive thing a running app does. It dwarfs everything else.</li>
+        <li><strong>Screen wake-ups.</strong> Every wrist raise lights the display, and on always-on watches the dimmed face still costs you. Over two hours that's hundreds of wakes.</li>
+        <li><strong>Heart-rate sampling.</strong> The optical sensor is cheaper than GPS but not free, and the cadence is partly yours to influence.</li>
+        <li><strong>Your own CPU.</strong> Filtering, distance math, and SwiftUI redraws on every fix add up — and unlike the sensors, this part is entirely your fault.</li>
+      </ul>
+      <p>The headline number from that session: full-accuracy 1&nbsp;Hz GPS for the entire run drew roughly <strong>35–40% of a Series watch's battery</strong> on its own. With the duty-cycling below, I got a comparable run down to the low twenties without the route quality suffering in any way a runner would notice.</p>
+
+      <h2>Duty-cycling location when the pace is steady</h2>
+      <p>The insight that bought the most: <em>a runner holding a steady pace down a straight road does not need a fix every second at the highest accuracy.</em> You only need that density at the start (cold fix), around turns, and when speed changes. So I run the location manager adaptively — best accuracy with a tight <code>distanceFilter</code> by default, and when the recent pace has been stable I relax both, then tighten back up the moment things change.</p>
+
+      <pre><code>import CoreLocation
+
+final class RunLocationManager: NSObject, CLLocationManagerDelegate {
+    private let manager = CLLocationManager()
+
+    override init() {
+        super.init()
+        manager.delegate = self
+        manager.activityType = .fitness            // tells CL this is a workout
+        manager.allowsBackgroundLocationUpdates = true
+        tighten()                                  // start precise for the cold fix
+    }
+
+    func start() { manager.startUpdatingLocation() }
+
+    /// Precise mode: every metre, best fix. Use at the start &amp; around turns.
+    private func tighten() {
+        manager.desiredAccuracy = kCLLocationAccuracyBestForNavigation
+        manager.distanceFilter  = 5
+    }
+
+    /// Relaxed mode: coarser &amp; sparser. Use when pace is steady.
+    private func relax() {
+        manager.desiredAccuracy = kCLLocationAccuracyNearestTenMeters
+        manager.distanceFilter  = 20
+    }
+
+    func locationManager(_ m: CLLocationManager,
+                         didUpdateLocations locations: [CLLocation]) {
+        guard let fix = locations.last, fix.horizontalAccuracy &gt; 0 else { return }
+        // paceIsSteady() compares the last few fixes' speed &amp; course variance.
+        paceIsSteady(using: locations) ? relax() : tighten()
+        // ... hand the gated fix to the filter (off this callback's hot path)
+    }
+}</code></pre>
+
+      <p>Two settings here matter more than they look. <code>activityType = .fitness</code> lets Core Location apply workout-aware heuristics — it knows a runner's motion profile and budgets accordingly. And <code>kCLLocationAccuracyBestForNavigation</code> is genuinely more expensive than plain <code>kCLLocationAccuracyBest</code>; reserve it for when you actually need turn-by-turn precision, not as a default you forget to dial back.</p>
+
+      <div class="callout">
+        <span class="clabel">Pause means pause the sensors</span>
+        <p>When the session goes to <code>.paused</code>, stop being greedy. Call <code>stopUpdatingLocation()</code> and let the builder idle. A runner stopped at a crossing doesn't need 1&nbsp;Hz GPS, and an auto-paused session that keeps the sensors hot is just burning battery to record someone standing still.</p>
+      </div>
+
+      <h2>Keeping CPU work off the workout's path</h2>
+      <p>The sensors get the blame, but on a long run your own code is a quiet drain. Every location callback that triggers a Kalman step, a distance recomputation, and a full SwiftUI invalidation is a little spike, and at one per second for two hours those spikes are a real fraction of the budget. Worse, doing heavy work synchronously inside the delegate callback can stall the very pipeline that's delivering fixes.</p>
+      <p>So I keep the delegate callbacks lean: validate the fix, push it onto a queue, and return. The filtering and distance math happen off the main actor, and the UI updates on a throttle — a runner glancing at the watch can't perceive faster than about once a second anyway, so redrawing the pace label at 60&nbsp;fps is pure waste. <strong>Batching</strong> is the other lever: HealthKit and Core Location will hand you several samples at once if you let them, and processing a batch is cheaper than waking up for each one.</p>
+
+      <h2>Testing battery honestly, on a real wrist</h2>
+      <p>You cannot measure any of this in the simulator. The simulator has no GPS radio, no optical heart sensor, and no real power draw — it'll happily tell you everything is fine. The only honest test is a real device on a real arm for a real duration, and it's tedious in exactly the way that makes people skip it.</p>
+      <p>What I do: charge to 100%, note the level, then run a genuine 60-to-90-minute session outdoors with the screen behaving as a runner's would — wrist raises, glances, the lot. Note the drain. Change <em>one</em> variable — the <code>distanceFilter</code>, the accuracy tier, the UI throttle — and run the same loop again on another day. It's slow, but it's the only way to attribute a percentage to a decision. Xcode's energy gauges and a <code>signpost</code> around the per-fix work tell you where the CPU goes; only the wrist tells you what the radios cost. And test on the oldest watch you still support, because the newest one's bigger battery will mask sins that an older model won't forgive.</p>
+
+      <p>The throughline is a mindset more than a technique: on watchOS, battery is a feature, and it deserves the same discipline as any feature you'd put on a roadmap. Start the <code>HKWorkoutSession</code> so the system keeps you alive, then spend the rest of your effort earning that privilege — duty-cycle the GPS, respect pause, keep your own CPU off the hot path, and measure on real hardware instead of hoping. A run that dies at ninety minutes because the watch did isn't a run you recorded. Getting the runner all the way to the finish line, with battery to spare, is the whole job.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

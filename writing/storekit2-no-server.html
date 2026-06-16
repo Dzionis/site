@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<!-- Sample post — written to demonstrate the mechanism. Copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StoreKit 2 with no server: verifying purchases safely · Dzionis Brek</title>
+<meta name="description" content="How StoreKit 2 lets most apps verify in-app purchases on-device — currentEntitlements, JWS signature verification, the offline case — and the few cases where you still need a backend." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="StoreKit 2 with no server: verifying purchases safely" />
+<meta property="og:description" content="currentEntitlements, signature verification, and the offline case — how to verify in-app purchases on-device, without a backend." />
+<meta property="og:url" content="https://dzionis.by/writing/storekit2-no-server.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Monetization · StoreKit</span>
+      <h1>StoreKit 2 with no server: verifying purchases safely</h1>
+      <div class="post-meta">
+        <span>November 18, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">StoreKit 2</span>
+        <span class="chip">Swift Concurrency</span>
+        <span class="chip">IAP</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">For most of my career, "do in-app purchases properly" meant standing up a server to validate receipts against Apple. With StoreKit 2 that's no longer the default answer — and for a large share of apps it's the wrong one. Here's how I verify purchases on-device, safely, with no backend at all.</p>
+
+      <p>The old StoreKit gave you an opaque, base64 blob — the app receipt — and a strong recommendation to ship it to your server, which would POST it to Apple's <code>verifyReceipt</code> endpoint and parse whatever came back. It worked, but it meant every indie app that just wanted to unlock "Pro" was suddenly running infrastructure: an endpoint, a shared secret, retry logic, and a parser for a format that changed under you. A lot of that work existed purely to answer one question — <em>is this person actually entitled to the thing they tapped?</em></p>
+
+      <p>StoreKit 2, introduced in iOS 15 and now the baseline for any app I start, answers that question on the device. Apple signs every transaction with a JWS payload your app can verify against Apple's own certificate chain, using nothing but the system framework. No round-trip, no shared secret, no parser. The result is that a meaningful number of apps — single-platform, content unlocked locally — genuinely do not need a server anymore.</p>
+
+      <h2>Entitlements are the source of truth</h2>
+      <p>The mental shift with StoreKit 2 is to stop thinking about receipts and start thinking about <em>entitlements</em>. You don't ask "what did they buy and when?" You ask "what are they entitled to <em>right now</em>?" and the framework hands you the current, deduplicated answer.</p>
+      <p>That answer lives in <code>Transaction.currentEntitlements</code> — an async sequence of every transaction that currently grants access. Expired subscriptions drop out automatically. Refunded purchases drop out. Consumables aren't there (they're spent the moment you finish them). What's left is exactly the set of product IDs the user should have unlocked. You iterate it, verify each one, and flip your local flags:</p>
+
+      <pre><code>import StoreKit
+
+@MainActor
+final class Entitlements: ObservableObject {
+    @Published private(set) var unlocked: Set&lt;String&gt; = []
+
+    /// Recompute access from the framework's current entitlements.
+    func refresh() async {
+        var owned: Set&lt;String&gt; = []
+        for await result in Transaction.currentEntitlements {
+            guard case .verified(let transaction) = result else {
+                continue   // ignore anything Apple didn't sign
+            }
+            // A subscription cancelled mid-period still grants access
+            // until it expires; revoked (refunded) ones are excluded here.
+            if transaction.revocationDate == nil {
+                owned.insert(transaction.productID)
+            }
+        }
+        unlocked = owned
+    }
+
+    func isUnlocked(_ productID: String) -&gt; Bool {
+        unlocked.contains(productID)
+    }
+}</code></pre>
+
+      <p>That's the whole entitlement check. No receipt, no network, no server. The framework has already reconciled the App Store account's purchase history and is giving you the distilled result.</p>
+
+      <h2>What the signature actually guarantees</h2>
+      <p>Every <code>Transaction</code> StoreKit hands you is wrapped in a <code>VerificationResult</code>, and that wrapper is the part people skim past. It's an enum with two cases — <code>.verified(T)</code> and <code>.unverified(T, VerificationError)</code> — and the choice you make there is the entire security story of an on-device setup.</p>
+      <p>When you read a transaction, Apple has signed it as a JWS (JSON Web Signature) using a key whose certificate chains up to Apple's root. StoreKit checks that signature for you on-device. A <code>.verified</code> result means the cryptographic check passed: this payload was issued by Apple, for this app's bundle ID, and hasn't been tampered with in transit or on disk. That's a strong guarantee, and it's the one that replaces the server round-trip.</p>
+      <p>What <code>.verified</code> does <em>not</em> prove is intent or business logic. It tells you the data is authentic; it doesn't tell you whether a subscription is still inside its paid period or whether you've already granted a consumable. You still read <code>expirationDate</code>, <code>revocationDate</code>, and your own records. JWS authenticates the message — it doesn't make the decision for you.</p>
+
+      <div class="callout">
+        <span class="clabel">On .unverified</span>
+        <p>Treat <code>.unverified</code> as "not entitled," full stop — never unwrap the payload and grant access anyway. It means the signature didn't validate: a jailbroken device, a tampered transaction, or a clock so far off that the certificate looks invalid. The associated value exists for logging and graceful messaging, not as an escape hatch. The day you write <code>if case .unverified(let t, _) = result { grant(t) }</code> is the day your IAP is trivially bypassed.</p>
+      </div>
+
+      <h2>Listen for updates, always</h2>
+      <p>Reading <code>currentEntitlements</code> at launch covers the steady state, but purchases also change while your app is running or while it's closed. A subscription auto-renews. A parent approves an Ask-to-Buy request hours after the child tapped Buy. Apple processes a refund and revokes a transaction. Family Sharing grants a purchase someone else made.</p>
+      <p>None of those originate from your <code>purchase()</code> call, so you'd miss them if you only checked at the obvious moments. <code>Transaction.updates</code> is an async sequence that delivers exactly these out-of-band transactions. The rule I follow on every project: start listening <em>before</em> the first UI appears, and keep the task alive for the whole app lifetime.</p>
+
+      <pre><code>@main
+struct MyApp: App {
+    @StateObject private var store = Store()
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(store)
+                .task { await store.start() }   // begin listening at launch
+        }
+    }
+}
+
+actor TransactionObserver {
+    /// Long-lived task that catches renewals, refunds, and Ask-to-Buy
+    /// approvals that arrive outside of an explicit purchase() call.
+    func listenForUpdates(_ onChange: @escaping @Sendable () async -&gt; Void) -&gt; Task&lt;Void, Never&gt; {
+        Task.detached {
+            for await result in Transaction.updates {
+                guard case .verified(let transaction) = result else { continue }
+                await onChange()                 // recompute entitlements
+                await transaction.finish()       // tell Apple we handled it
+            }
+        }
+    }
+}</code></pre>
+
+      <p>Start that listener early, because a transaction delivered before you attach can be missed for that session. And note the <code>finish()</code> at the end — that's not optional bookkeeping.</p>
+
+      <h2>Finishing transactions, and why it matters</h2>
+      <p>Calling <code>transaction.finish()</code> tells the App Store you've delivered the goods. Until you do, StoreKit considers the transaction unresolved: it will keep redelivering it through <code>Transaction.updates</code> on every launch, and for consumables the user may not be able to buy the item again. I've debugged more than one "why does this keep popping up" report that traced back to a missing <code>finish()</code> on an early-return path.</p>
+      <p>The discipline is simple — only finish <em>after</em> you've persisted the unlock. For a non-consumable or subscription, where entitlement is recomputed from <code>currentEntitlements</code> anyway, you can finish as soon as you've recorded it. For a consumable, finish only after the coins are credited and saved, so a crash mid-purchase still lets the transaction redeliver and complete.</p>
+
+      <h2>Fetching products, buying, restoring</h2>
+      <p>The rest of the surface is small and pleasantly modern. You fetch products by ID with <code>Product.products(for:)</code>, kick off a purchase with <code>product.purchase()</code>, and handle the result. There is no separate "restore purchases" API in the old sense — <code>currentEntitlements</code> <em>is</em> the restore, because it reflects whatever the signed-in App Store account owns. A "Restore Purchases" button (which Apple still requires you to show) just calls your refresh, optionally after <code>AppStore.sync()</code> to force a fresh pull.</p>
+
+      <pre><code>func buy(_ product: Product) async throws -&gt; Bool {
+    let result = try await product.purchase()
+    switch result {
+    case .success(let verification):
+        guard case .verified(let transaction) = verification else {
+            return false                      // signature failed — don't unlock
+        }
+        await entitlements.refresh()          // recompute from the source of truth
+        await transaction.finish()            // then mark it handled
+        return true
+    case .userCancelled:
+        return false
+    case .pending:
+        return false                          // Ask-to-Buy: updates will deliver it
+    @unknown default:
+        return false
+    }
+}
+
+// "Restore Purchases" — required in the UI, trivial in StoreKit 2.
+func restore() async {
+    try? await AppStore.sync()                // force a refresh from the account
+    await entitlements.refresh()
+}</code></pre>
+
+      <p>Notice the <code>.pending</code> case carries no transaction. That's Ask-to-Buy waiting on a parent, or a payment method needing action. You don't unlock anything — you show a "waiting for approval" state and let your <code>Transaction.updates</code> listener deliver the verified transaction whenever approval lands.</p>
+
+      <h2>What happens offline</h2>
+      <p>This is the question that makes people nervous about dropping the server, and the answer is reassuring: <code>Transaction.currentEntitlements</code> reads from a signed cache the system maintains on-device, so it works offline. A subscriber who boards a plane keeps their Pro features. The JWS signature was verified when the transaction was written; re-reading it doesn't need the network.</p>
+      <p>The honest caveat is that the cache can be slightly stale. If a subscription expires mid-flight, the device may still report it as active until it next reconciles with the App Store. In practice this window is small and, for most apps, harmless — granting a few extra hours of access beats locking out a paying customer because their train went through a tunnel. The principle I hold to is <strong>rely on the last known verified state, and fail open for legitimate purchasers, not closed</strong>. If your content is so valuable that a stale hour is a real loss, that's a signal you might be in server territory — which is the next section.</p>
+
+      <h2>When you genuinely still need a server</h2>
+      <p>On-device verification is right for a great many apps, but I'd be selling you something if I claimed it fits all of them. There are concrete cases where a backend earns its keep:</p>
+      <ul>
+        <li><strong>Cross-platform entitlements.</strong> If someone subscribes on iOS and expects access on your web app or an Android build, the App Store account can't tell those other platforms anything. You need your own user accounts and a server that records the entitlement against them.</li>
+        <li><strong>App Store Server Notifications.</strong> For reliable, near-real-time signals about renewals, billing retries, refunds, and grace periods — independent of whether the app is even installed — you want Apple posting <a href="https://developer.apple.com/documentation/appstoreservernotifications">v2 notifications</a> to your endpoint. That's the backbone of dunning emails and churn analytics.</li>
+        <li><strong>Fraud-sensitive or high-value content.</strong> If unlocking something has real marginal cost to you — a paid API behind it, expensive media, anything where a bypass actually hurts — you want server-side validation with the <a href="https://developer.apple.com/documentation/appstoreserverapi">App Store Server API</a> as the gate, not just an on-device flag.</li>
+      </ul>
+      <p>The pattern in all three is the same: the value of the purchase doesn't live entirely on one device. When entitlement has to be authoritative <em>across</em> devices, platforms, or your own infrastructure, a server stops being overhead and becomes the actual source of truth. StoreKit 2 even helps here — the same JWS transactions verify server-side, so you're not back to the old <code>verifyReceipt</code> dance.</p>
+
+      <p>For everything else — the single-platform app that unlocks features locally, which is most of what I ship — resist the reflex to build a backend out of habit. A server you don't need is a server you have to keep alive, secure, and pay for, and every one of those is a way to break a purchase flow that StoreKit was perfectly capable of handling on its own. Read entitlements, verify the signature, listen for updates, finish your transactions. That's a complete, safe IAP implementation, and it runs entirely on the phone in the customer's hand.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

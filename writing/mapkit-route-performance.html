@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A GPS route on MapKit that doesn't stutter when you pan · Dzionis Brek</title>
+<meta name="description" content="Why thousands of raw GPS points make MapKit stutter when you pan and zoom, and the point-count tricks — simplify, level-of-detail, snapshots — that keep an MKPolyline route smooth." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="A GPS route on MapKit that doesn't stutter when you pan" />
+<meta property="og:description" content="MKPolyline, overlay renderers, and why point count is the only lever that really matters for a smooth route." />
+<meta property="og:url" content="https://dzionis.by/writing/mapkit-route-performance.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · Maps</span>
+      <h1>A GPS route on MapKit that doesn't stutter when you pan</h1>
+      <div class="post-meta">
+        <span>December 8, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">MapKit</span>
+        <span class="chip">Core Location</span>
+        <span class="chip">Performance</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Drawing a run on a map is a two-line job until the route is long. Then you pan, the map judders, the line lags a frame behind your finger, and the whole thing feels cheap. Almost every time, the fix is the same: fewer points.</p>
+
+      <p>The route screen in iRunning looks trivial. You take the array of coordinates from a finished run, wrap it in an <code>MKPolyline</code>, hand it to the map, and a renderer draws a line. It works perfectly on a 2&nbsp;km jog. Then a user uploads a 30&nbsp;km trail run recorded at 1&nbsp;Hz — around 18,000 fixes — and the buttery map turns to glue. The line still draws, but every pan and pinch drops frames. The bug report says "the map is laggy," and they're right.</p>
+
+      <p>This post is about why that happens and the handful of things that actually move the needle. Spoiler: it's almost never the renderer's fault, and it's almost always the point count.</p>
+
+      <h2>The naive version, and why it's slow</h2>
+      <p>Here's the whole feature as most people first write it. An overlay, a renderer that gives it a colour and width, done:</p>
+
+      <pre><code>import MapKit
+
+final class RouteViewController: UIViewController, MKMapViewDelegate {
+
+    let mapView = MKMapView()
+
+    func showRoute(_ coordinates: [CLLocationCoordinate2D]) {
+        let polyline = MKPolyline(coordinates: coordinates, count: coordinates.count)
+        mapView.addOverlay(polyline)
+        mapView.setVisibleMapRect(polyline.boundingMapRect,
+                                  edgePadding: .init(top: 40, left: 40, bottom: 40, right: 40),
+                                  animated: false)
+    }
+
+    func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+        guard let line = overlay as? MKPolyline else { return MKOverlayRenderer(overlay: overlay) }
+        let renderer = MKPolylineRenderer(polyline: line)
+        renderer.strokeColor = .systemGreen
+        renderer.lineWidth = 4
+        return renderer
+    }
+}</code></pre>
+
+      <p>Nothing here is wrong, exactly. The problem is what <code>MKPolylineRenderer</code> does under the hood. It isn't a cached bitmap that the map slides around — it redraws the path into the current tile context as the map's transform changes. Every meaningful pan or zoom step asks the renderer to walk all 18,000 vertices, project them, and stroke the line again. At a few thousand points that's invisible. At tens of thousands it blows your frame budget, and the 120&nbsp;Hz ProMotion display you were so proud of starts skipping.</p>
+
+      <p>The instinct is to look for a faster renderer or a magic flag. There isn't one. The lever is the number of vertices the renderer has to touch.</p>
+
+      <h2>Simplify before the overlay ever exists</h2>
+      <p>The single most effective thing you can do is reduce the point count <em>before</em> you build the <code>MKPolyline</code>. Most of those 18,000 fixes sit on near-straight segments and contribute nothing to the visible shape of the line. Drop them and the route looks identical while the renderer's job shrinks by an order of magnitude.</p>
+
+      <p>The standard tool for this is the <a href="https://en.wikipedia.org/wiki/Ramer%E2%80%93Douglas%E2%80%93Peucker_algorithm">Ramer–Douglas–Peucker</a> algorithm — draw a line between the endpoints, keep only the points that deviate from it by more than some <code>epsilon</code>, recurse. I wrote up the implementation in <a href="smoothing-noisy-gps.html">the GPS-smoothing post</a>, where it's the second half of a denoise-then-thin pipeline; the same <code>RouteSimplifier.simplify(_:epsilon:)</code> is exactly what you want here. Run it once when the run is saved, store the thinned coordinates, and the map never sees the raw set at all.</p>
+
+      <pre><code>// On save — thin once, store the result, draw from it forever after.
+let simplified = RouteSimplifier.simplify(rawTrack, epsilon: 5)
+let polyline = MKPolyline(coordinates: simplified, count: simplified.count)</code></pre>
+
+      <p>An <code>epsilon</code> of about 5&nbsp;m typically takes a city run from a few thousand points down to a few hundred without any visible change to the line. The map goes back to feeling native, and you didn't touch the renderer.</p>
+
+      <div class="callout">
+        <span class="clabel">Keep two copies</span>
+        <p>Simplify for the <em>map</em>, never for the <em>data</em>. Distance, pace, elevation, and splits must be computed from the raw, gated fixes — Douglas–Peucker deliberately throws away the small wiggles that distance is measured from. The simplified array is a presentation artifact; treat it as disposable and keep the full track as the source of truth.</p>
+      </div>
+
+      <h2>Level of detail: simplify harder when zoomed out</h2>
+      <p>A single simplified line is enough for most apps. But there's a subtlety: how aggressively you can thin depends on how far the user is zoomed. When the whole route fits on screen, a point every 20&nbsp;m is more than enough — a 20&nbsp;m wiggle is sub-pixel anyway. When they pinch in to inspect one switchback, you want the detail back.</p>
+
+      <p>The clean way to handle this is level-of-detail: keep a couple of pre-simplified versions of the route and swap which overlay you draw based on the map's current zoom. You can read zoom off the camera's <code>altitude</code> or, more directly, off the width of <code>mapView.visibleMapRect</code>.</p>
+
+      <pre><code>// Build a few tiers once, cheapest (most simplified) first.
+private lazy var lods: [(maxRectWidth: Double, line: MKPolyline)] = {
+    let coarse  = RouteSimplifier.simplify(rawTrack, epsilon: 25)
+    let medium  = RouteSimplifier.simplify(rawTrack, epsilon: 10)
+    let fine    = RouteSimplifier.simplify(rawTrack, epsilon: 4)
+    return [(.greatestFiniteMagnitude, line(coarse)),
+            (5_000, line(medium)),
+            (1_000, line(fine))]
+}()
+
+func mapViewDidChangeVisibleRegion(_ mapView: MKMapView) {
+    let width = mapView.visibleMapRect.size.width
+    let tier = lods.last { width &lt;= $0.maxRectWidth } ?? lods[0]
+    guard tier.line !== currentLine else { return }   // only swap on change
+    if let currentLine { mapView.removeOverlay(currentLine) }
+    mapView.addOverlay(tier.line)
+    currentLine = tier.line
+}</code></pre>
+
+      <p>The win is double: when zoomed out you're drawing the coarsest line, which is the cheapest, and the user can't tell. The one thing to watch is the <code>!==</code> guard — <code>mapViewDidChangeVisibleRegion</code> fires constantly while panning, and you only want to touch the overlay set when the tier genuinely changes, not on every delegate call.</p>
+
+      <h2>Reuse the renderer, don't rebuild the world</h2>
+      <p>The second classic mistake is churning overlays on live updates. During an in-progress run the track grows once a second, and the tempting move is to rip out the old polyline and add a fresh one on every fix. That forces MapKit to discard and recreate the renderer each time — visible flicker, wasted allocations.</p>
+
+      <p>Two habits fix this. First, build the <code>MKPolylineRenderer</code> once and hand back the same instance from <code>rendererFor</code> rather than allocating a new one each call. Second, for the live case, prefer <code>MKMapView</code>'s built-in support for mutating the visible track instead of swapping overlays — and when you do need a different overlay, add the new one before removing the old so there's no frame with nothing drawn.</p>
+
+      <pre><code>private var routeRenderer: MKPolylineRenderer?
+
+func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+    guard let line = overlay as? MKPolyline else {
+        return MKOverlayRenderer(overlay: overlay)
+    }
+    if let routeRenderer, routeRenderer.polyline === line {
+        return routeRenderer                      // reuse the existing one
+    }
+    let renderer = MKPolylineRenderer(polyline: line)
+    renderer.strokeColor = .systemGreen
+    renderer.lineWidth = 4
+    renderer.lineCap = .round
+    renderer.shouldRasterize = true               // cache the stroke as a bitmap
+    routeRenderer = renderer
+    return renderer
+}</code></pre>
+
+      <p>That <code>shouldRasterize</code> flag is worth a mention: it tells the renderer to cache its drawing as a bitmap and reuse it across frames where the geometry hasn't changed, which is exactly the pan-and-zoom case. It helps for a static, finished route. Leave it off while the line is actively growing, since you'd be invalidating the cache every second anyway.</p>
+
+      <h2>Beware the fancy line</h2>
+      <p>At some point a designer asks for a route coloured by pace — green where you were fast, red where you crawled — or a gradient that fades along the path. These look great and they are not free. A single-colour <code>MKPolyline</code> is one overlay with one stroke. A multi-colour route means either splitting the line into one overlay <em>per segment</em> — now you have hundreds of overlays, each with its own renderer — or a custom <code>MKOverlayRenderer</code> that strokes the path in pieces. Both multiply the per-frame drawing cost dramatically.</p>
+
+      <p>If you must have it, simplify <em>harder</em> first so each colour segment spans many original fixes, and cap the number of distinct segments — a pace gradient quantised into 8 or 10 bands looks just as good as a continuous one and draws far cheaper. Don't pay for 2,000 colour transitions nobody can perceive.</p>
+
+      <h2>Don't render a live map for a thumbnail</h2>
+      <p>The last big win has nothing to do with the line at all. A history list with a little map preview per run does not need 30 live <code>MKMapView</code> instances — that's a memory and scrolling disaster. Each map view is heavyweight: it spins up tile loading, gesture recognizers, and a renderer of its own.</p>
+
+      <p>For any non-interactive preview, use <code>MKMapSnapshotter</code> to render a flat <code>UIImage</code> once, then draw the route on top of it with the standard projection. Cache the image keyed by the run, and your list scrolls like any other image list.</p>
+
+      <pre><code>func snapshot(of route: [CLLocationCoordinate2D],
+              size: CGSize) async throws -> UIImage {
+    let options = MKMapSnapshotter.Options()
+    options.region = MKPolyline(coordinates: route, count: route.count)
+        .boundingMapRect.region(insetBy: 1.2)        // a little padding
+    options.size = size
+
+    let snapshot = try await MKMapSnapshotter(options: options).start()
+    let renderer = UIGraphicsImageRenderer(size: size)
+    return renderer.image { ctx in
+        snapshot.image.draw(at: .zero)
+        let path = UIBezierPath()
+        for (i, coord) in route.enumerated() {
+            let p = snapshot.point(for: coord)         // map coord → image point
+            i == 0 ? path.move(to: p) : path.addLine(to: p)
+        }
+        UIColor.systemGreen.setStroke()
+        path.lineWidth = 3
+        path.stroke()
+    }
+}</code></pre>
+
+      <p>Snapshotter still draws the polyline yourself, so the point-count rule applies here too — feed it the simplified array, not the raw one. But you pay the cost exactly once per run, off the main thread, and the result is a plain image. No live map, no per-cell renderer, no scrolling jank.</p>
+
+      <p>If there's one thing to take from all of this, it's that MapKit performance for routes is not really a rendering problem — it's a data problem wearing a rendering costume. The renderer, the rasterization flag, the snapshot, the level-of-detail tiers: every one of them is ultimately a way to put fewer vertices in front of the GPU each frame. Get the point count right before the overlay is ever born and the rest is housekeeping. Get it wrong and no amount of clever drawing will save you.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

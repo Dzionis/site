@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Streaming live heart rate from watch to phone · Dzionis Brek</title>
+<meta name="description" content="Reading live heart rate on the watch, choosing the right WatchConnectivity transport, throttling the channel, and reconciling when the phone is asleep." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Streaming live heart rate from watch to phone" />
+<meta property="og:description" content="The real-time channel, throttling, and what to do when the phone is asleep — how I stream live heart rate from watchOS to iOS in iRunning." />
+<meta property="og:url" content="https://dzionis.by/writing/live-heart-rate-watchconnectivity.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · watchOS</span>
+      <h1>Streaming live heart rate from watch to phone</h1>
+      <div class="post-meta">
+        <span>January 30, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">watchOS</span>
+        <span class="chip">WatchConnectivity</span>
+        <span class="chip">HealthKit</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">During a run, the heart rate you see on the phone comes from a sensor on the other wrist of the wireless link. Getting that number across — one beat per second, reliably, without flattening the battery or flooding the channel — is a surprisingly opinionated little problem. Here's how I solved it in iRunning.</p>
+
+      <p>The setup sounds trivial: the Apple Watch measures heart rate, the phone shows a big number that ticks live while you run. But the watch and the phone are two separate devices talking over Bluetooth (or peer Wi-Fi), and that link is allowed to be unreliable, slow, or simply <em>asleep</em> for stretches at a time. Everything interesting about this feature lives in the gap between "the watch knows your heart rate" and "the phone is showing it right now."</p>
+
+      <h2>The watch is the source of truth</h2>
+      <p>First principle, and it dictates everything downstream: <strong>the watch owns the data</strong>. It's the device with the sensor and the device running the <code>HKWorkoutSession</code>, so it keeps recording whether or not the phone is listening. The phone is a <em>mirror</em> — a nice live readout when the link is up, and nothing load-bearing depends on it. If the phone never gets a single sample, the workout is still complete and correct on the watch, which syncs to HealthKit at the end regardless.</p>
+      <p>Designing it this way removes a whole category of bugs. You're never trying to make the phone authoritative over data it doesn't generate, and you're never blocking the watch on a phone that wandered out of range.</p>
+
+      <h2>Reading heart rate on the watch</h2>
+      <p>Inside an active workout, the right tool is <code>HKLiveWorkoutBuilder</code>. You start a workout session, attach its builder, and the builder hands you samples through its delegate as they're collected — no polling, no timers. You filter the delegate callback for the heart-rate quantity type and pull the latest value out:</p>
+
+      <pre><code>import HealthKit
+
+final class WorkoutManager: NSObject, HKLiveWorkoutBuilderDelegate {
+
+    private let heartRateType = HKQuantityType(.heartRate)
+    private let bpmUnit = HKUnit.count().unitDivided(by: .minute())
+
+    func workoutBuilder(_ builder: HKLiveWorkoutBuilder,
+                        didCollectDataOf types: Set&lt;HKSampleType&gt;) {
+        guard types.contains(heartRateType),
+              let stats = builder.statistics(for: heartRateType),
+              let quantity = stats.mostRecentQuantity() else { return }
+
+        let bpm = quantity.doubleValue(for: bpmUnit)
+        HRChannel.shared.send(bpm: bpm, at: Date())
+    }
+}</code></pre>
+
+      <p>If you're reading heart rate <em>outside</em> a workout — say a passive ambient view — the tool is <code>HKAnchoredObjectQuery</code> instead. You give it an anchor, it returns everything since that anchor, and its update handler keeps firing with only the <em>new</em> samples as they land. The anchor is the important part: it means you never re-process the same sample twice across launches. But for a running app, you're almost always inside a workout, so <code>HKLiveWorkoutBuilder</code> is the path. Either way, the output is the same — a fresh BPM value, a few times a second, that now needs to reach the phone.</p>
+
+      <h2>Three transports, three jobs</h2>
+      <p>This is where people get it wrong, because <code>WCSession</code> gives you three ways to move data and they are <em>not</em> interchangeable. Picking the wrong one is the difference between a readout that feels alive and one that lurches or drains the battery. The three:</p>
+      <ul>
+        <li><strong><code>sendMessage</code></strong> — live, immediate, lowest latency. It requires the counterpart to be <em>reachable</em> right now (<code>session.isReachable == true</code>), and if it isn't, the send fails. This is your real-time pipe.</li>
+        <li><strong><code>transferUserInfo</code></strong> — queued and <em>guaranteed</em>. The system holds each item and delivers it in <strong>FIFO</strong> order whenever the link next comes up, even across app launches. Delivery is certain; <em>timing</em> is not.</li>
+        <li><strong><code>updateApplicationContext</code></strong> — latest-state-only. It keeps exactly one dictionary; each call overwrites the last undelivered one. The counterpart gets the most recent state when it next wakes, and never sees the intermediate values.</li>
+      </ul>
+      <p>Read those again with one question in mind — <em>what happens to data I send while the link is down?</em> <code>sendMessage</code> drops it. <code>transferUserInfo</code> keeps all of it and delivers in order. <code>updateApplicationContext</code> keeps only the newest. That single property is how you choose.</p>
+
+      <h2>Why live HR is a sendMessage case</h2>
+      <p>For a number that updates every second on screen, latency is the whole point — a heartbeat you see three seconds late is worse than useless, it's misleading. So the live path is <code>sendMessage</code>, fired the moment a new sample arrives while the phone is reachable.</p>
+      <p>But what about the value you produce while the phone <em>isn't</em> reachable? Here's the subtle bit: for a live readout you almost never want <code>transferUserInfo</code> as the fallback, even though it's the "guaranteed" one. Think about what guaranteed FIFO delivery actually means here — when the phone wakes up forty seconds later, it would receive forty queued heart-rate samples in a burst and replay them as if they were live. Nobody wants to watch their heart rate scrub through the last minute. For <em>live</em> readout, stale data is worse than no data.</p>
+      <p>So the fallback for the <em>live number</em> is <code>updateApplicationContext</code>: when the phone comes back, it gets the single most recent BPM and nothing else. The latest-state-only semantics are exactly right — you want the current value, not a history. The genuinely guaranteed transport, <code>transferUserInfo</code>, I reserve for things that must survive intact and where order matters: workout-complete events, the final summary, a marker the phone needs even if it was asleep the whole run. Match the transport to the meaning of the payload, not to a vague sense that "guaranteed is safer."</p>
+
+      <div class="callout">
+        <span class="clabel">Rule of thumb</span>
+        <p>Use <code>sendMessage</code> for "show this now," <code>updateApplicationContext</code> for "here's the latest state," and <code>transferUserInfo</code> only for "this event must arrive, in order, eventually." Live heart rate is the first with a fallback to the second; workout boundaries are the third.</p>
+      </div>
+
+      <h2>Throttle, or you'll flood the channel</h2>
+      <p>HealthKit can hand you heart-rate updates faster than once a second, and your render loop certainly doesn't need more than ~1&nbsp;Hz. If you call <code>sendMessage</code> on every single delegate callback, you'll saturate the link, spike power draw on both devices, and — counterintuitively — make the readout <em>laggier</em>, because messages queue up behind each other. The fix is to coalesce: keep only the most recent value and send at a fixed cadence.</p>
+
+      <pre><code>import WatchConnectivity
+
+final class HRChannel {
+    static let shared = HRChannel()
+
+    private let session = WCSession.default
+    private let minInterval: TimeInterval = 1.0   // ~1 Hz
+    private var lastSent = Date.distantPast
+    private var pending: Double?
+
+    func send(bpm: Double, at date: Date) {
+        pending = bpm
+
+        // Coalesce: at most one send per minInterval.
+        guard date.timeIntervalSince(lastSent) &gt;= minInterval,
+              let value = pending else { return }
+        lastSent = date
+        pending = nil
+
+        let payload: [String: Any] = ["bpm": value, "t": date.timeIntervalSince1970]
+
+        if session.isReachable {
+            // Live path. Fall back to latest-state on failure.
+            session.sendMessage(payload, replyHandler: nil) { [weak self] _ in
+                self?.cacheLatest(payload)
+            }
+        } else {
+            // Phone asleep or away: keep only the newest value.
+            cacheLatest(payload)
+        }
+    }
+
+    private func cacheLatest(_ payload: [String: Any]) {
+        try? session.updateApplicationContext(payload)
+    }
+}</code></pre>
+
+      <p>Two details worth calling out. The <code>pending</code> value means a sample that arrives mid-interval isn't lost — it's held and sent at the next tick, so you always transmit the <em>freshest</em> reading rather than a stale one that happened to land on the boundary. And the <code>sendMessage</code> error handler doesn't just log; it falls back to caching the latest value, so a send that fails because reachability flipped mid-flight still leaves the right state waiting for the phone.</p>
+
+      <h2>When the link is down, and when it returns</h2>
+      <p>The phone being asleep or out of range — <code>session.isReachable == false</code> — is the normal case, not the edge case. Your wrist faces away, the phone's in a bag in the next room, the screen's off. The watch must keep recording through all of it without caring, which it does, because the workout lives on the watch.</p>
+      <p>What matters is the <em>reconciliation</em> when the link returns. With the design above it's almost free: the phone wakes, the system delivers the last application context, and the readout jumps straight to the current heart rate — not a replay of everything it missed. On the phone side you implement <code>didReceiveApplicationContext</code> for that catch-up value and <code>didReceiveMessage</code> for the live stream, and feed both into the same display. From the runner's perspective the number was simply "behind" for a moment and is now correct, which is exactly the honest thing to show.</p>
+      <p>The anything-that-must-arrive payloads ride <code>transferUserInfo</code> and need no special handling — the OS guarantees they land in order whenever it can, so the phone's record of the run is eventually complete even if it spent the entire workout in a pocket. You wire the listener once and trust the queue.</p>
+
+      <h2>Designing for an unreliable link</h2>
+      <p>Strip away the API names and the real lesson is about <em>posture</em>. A watch-to-phone connection is not a function call that always returns; it's a link that's frequently absent, occasionally slow, and only sometimes fast. Build as if reachability is the exception and you get a feature that degrades gracefully on its own — live when it can be, caught-up when it can't, and never blocking the device that actually owns the data. Pick each transport for what its payload <em>means</em>, throttle so you respect a channel you don't control, and let the watch stay the source of truth. Do that, and a flaky wireless link stops being a bug surface and becomes just another input you've designed around.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

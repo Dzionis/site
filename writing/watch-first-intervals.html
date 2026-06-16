@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Watch-first, not watch-also: designing intervals for the wrist · Dzionis Brek</title>
+<meta name="description" content="Treating the Apple Watch as the primary screen, not a remote for the phone, flips almost every UI decision in a running app. How I design interval workouts for the wrist in iRunning." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Watch-first, not watch-also: designing intervals for the wrist" />
+<meta property="og:description" content="When the watch is where the run happens, glanceability and haptics matter more than screens. Designing intervals for the wrist." />
+<meta property="og:url" content="https://dzionis.by/writing/watch-first-intervals.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · Design</span>
+      <h1>Watch-first, not watch-also: designing intervals for the wrist</h1>
+      <div class="post-meta">
+        <span>May 26, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">watchOS</span>
+        <span class="chip">SwiftUI</span>
+        <span class="chip">WorkoutKit</span>
+        <span class="chip">UX</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Most running apps treat the Apple Watch as a remote control for the phone in your pocket. iRunning is built the other way around: the watch is where the run happens. Make that one decision and almost every UI choice flips.</p>
+
+      <p>"Watch-first" gets said a lot and meant rarely. The usual shape is a phone app that grew a watch companion — the watch shows a couple of metrics and a stop button, and the real product lives on the big screen. That's watch-<em>also</em>. iRunning has no subscription wall and no expectation that your phone is even with you: you build a workout, leave the phone at home, and run it from your wrist. Designing for that is a different job.</p>
+
+      <h2>The watch is a glance, not a screen</h2>
+      <p>A phone screen gets your full attention for seconds at a time. A watch screen gets maybe one second, at arm's length, while you're moving — cold fingers, bouncing arm, sweat on the glass, sun washing it out. You're not reading; you're checking. That single constraint kills most "dashboard" layouts before you draw them.</p>
+      <p>So the rule I landed on: <strong>one number owns the screen.</strong> During an interval, the thing you care about is how long this effort lasts — so that's enormous, high-contrast, centered. Everything else (pace, heart rate, total time) is secondary and sized like it. If a runner has to hunt for the number that matters, the layout has already failed.</p>
+
+      <h2>Design the current interval, not the workout</h2>
+      <p>The temptation is to show the plan: a little timeline of all your intervals with a marker creeping along it. It looks great in a screenshot and it's useless at a glance. Mid-run you don't care about interval 7 of 10; you care about <em>this one</em>, and maybe a hint of what's next.</p>
+      <p>iRunning shows the current step as the whole screen — what to do, and the time left in it — with the next step as a single quiet line underneath. The full plan lives on the phone, before and after. On the wrist, the app is always answering one question: what am I doing right now, and for how long?</p>
+
+      <h2>Talk through haptics, not the screen</h2>
+      <p>Here's the part that took me longest to internalize: during a hard interval the runner is <em>not looking at the watch</em>. They're looking at the road. So the screen can't be how you tell them an interval changed — the wrist has to.</p>
+      <p>Each transition gets a distinct haptic. Going into work is a firm, assertive tap; dropping into recovery is a softer one; finishing the session is the success pattern. After a few runs your wrist learns them and you stop looking at the watch almost entirely — which is the goal.</p>
+
+      <pre><code>import WatchKit
+
+enum IntervalPhase { case work, recovery, finished }
+
+func signal(_ phase: IntervalPhase) {
+    let device = WKInterfaceDevice.current()
+    switch phase {
+    case .work:      device.play(.start)     // firm: go
+    case .recovery:  device.play(.stop)      // softer: ease off
+    case .finished:  device.play(.success)
+    }
+}</code></pre>
+
+      <p>The screen still updates, of course — but as confirmation, for the glance that comes a second later, not as the primary signal. Haptics drive; the display follows.</p>
+
+      <div class="callout">
+        <span class="clabel">Test it on a wrist, moving</span>
+        <p>The simulator lies, and so does holding the watch in your hand at your desk. Glanceability and haptic timing only tell the truth when you're actually running — arm swinging, out of breath, mid-stride. Half of my layout decisions reversed the first time I tested them on a real run.</p>
+      </div>
+
+      <h2>Let WorkoutKit carry the structure</h2>
+      <p>You can hand-roll interval timing with a <code>Timer</code>, but on watchOS that's a fight you'll lose against the system — background execution, the workout-session lifecycle, the Fitness integration. WorkoutKit lets you describe the workout as data and hand it to the system, which then owns the transitions:</p>
+
+      <pre><code>import WorkoutKit
+
+// 5 × (2 min work / 90 s recovery), with a warm-up and cool-down.
+let work     = IntervalStep(.work,     goal: .time(2, .minutes))
+let recovery = IntervalStep(.recovery, goal: .time(90, .seconds))
+let block    = IntervalBlock(steps: [work, recovery], iterations: 5)
+
+let session = CustomWorkout(
+    activity: .running,
+    location: .outdoor,
+    displayName: "5 × 2 min",
+    warmup: WorkoutStep(goal: .time(10, .minutes)),
+    blocks: [block],
+    cooldown: WorkoutStep(goal: .time(5, .minutes))
+)
+
+let plan = WorkoutPlan(.custom(session))   // hand the structure to the system</code></pre>
+
+      <p>Describing the workout instead of driving it by hand means the system fires the transitions, keeps the session alive, and writes it to Health the same way a built-in workout would. My job shrinks to the part that's actually mine: how each transition <em>feels</em> on the wrist.</p>
+
+      <h2>One tap, big targets, no gestures</h2>
+      <p>Input on a moving wrist is hostile. Sweat breaks capacitive touch, gloves break it entirely, and a swipe-to-confirm you nailed at your desk is a coin flip at mile six. So the controls collapse to the essentials: a single large pause/resume target, and the Digital Crown — which works wet and gloved — for anything that needs a value. No custom swipe gestures, no tiny buttons, nothing that punishes a shaky tap.</p>
+
+      <h2>What watch-first costs</h2>
+      <p>Going watch-first doesn't mean abandoning the phone; it means giving it the opposite job. The phone is the <em>thinking</em> screen — building workouts, browsing history, reading the route and the splits after the fact, where a big screen and your full attention are assets. The watch is the <em>doing</em> screen. <code>WatchConnectivity</code> keeps the two in sync, with the watch as the source of truth for anything recorded on a run.</p>
+      <p>The honest tradeoff: it's more work. You're designing two apps with different rules instead of one app and a readout. But the result is something you can actually use the way a running watch is meant to be used — phone on the kitchen table, nothing in your hands, just a number and a buzz on your wrist telling you to go.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

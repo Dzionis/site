@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A WidgetKit timeline that stays fresh inside Apple's budget · Dzionis Brek</title>
+<meta name="description" content="How WidgetKit's TimelineProvider actually works, why polling is impossible, and how to pre-compute a schedule of entries so your widget stays fresh without burning Apple's reload budget." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="A WidgetKit timeline that stays fresh inside Apple's budget" />
+<meta property="og:description" content="Timeline policies, relevance, and the mental shift that keeps a widget fresh without getting throttled: you hand the system a schedule, not a live view." />
+<meta property="og:url" content="https://dzionis.by/writing/widgetkit-timeline-budget.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Craft · WidgetKit</span>
+      <h1>A WidgetKit timeline that stays fresh inside Apple's budget</h1>
+      <div class="post-meta">
+        <span>August 4, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">WidgetKit</span>
+        <span class="chip">SwiftUI</span>
+        <span class="chip">Performance</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">Every widget I've shipped started with the same wrong instinct: refresh it when the data changes, on a timer, like a tiny app. WidgetKit doesn't work that way, and once that clicked, my widgets stopped getting throttled into uselessness. A widget is not live. You hand the system a schedule of pre-rendered entries and walk away.</p>
+
+      <p>That sentence is the whole article, really. But it took me a couple of frustrated releases to internalise it, so let me unpack what it means in practice — the <code>TimelineProvider</code> trio, the reload policies, the budget you're quietly spending, and how to design a timeline that animates through the next few hours without your code ever waking up.</p>
+
+      <h2>The provider is a render schedule, not a data source</h2>
+      <p>A WidgetKit extension implements one protocol, <code>TimelineProvider</code> (or <code>AppIntentTimelineProvider</code> if it's configurable), and it has three methods. The mental model gets a lot clearer if you read them as three different audiences asking "what does this widget look like?"</p>
+      <ul>
+        <li><strong><code>placeholder(in:)</code></strong> — the system, asking for a skeleton it can show <em>instantly</em>, with no real data, while it figures out the rest. This is the redacted shape you see in the widget gallery before anything loads.</li>
+        <li><strong><code>snapshot(in:)</code></strong> — the gallery and transient states, asking "what does one representative entry look like, right now?" It must return fast, so you give it a single entry with whatever data is cheap to reach for.</li>
+        <li><strong><code>timeline(in:)</code></strong> — the real work. You return a <code>Timeline</code>: an array of entries, each stamped with the <em>date it should appear on screen</em>, plus a policy that tells WidgetKit when to come back and ask again.</li>
+      </ul>
+      <p>The thing that trips people up is that last method. <code>getTimeline</code> is not "give me the current state." It's "give me a schedule of future states." Each <code>TimelineEntry</code> carries a <code>date</code>, and the system flips the rendered view to that entry <em>when the clock reaches that date</em> — your extension is long since suspended by then. You're not pushing updates; you're pre-baking them.</p>
+
+      <h2>Why polling is simply not an option</h2>
+      <p>Here's the constraint that forces the whole design. WidgetKit gives each widget a <strong>reload budget</strong> — a soft daily allowance of times it will wake your extension to fetch a new timeline. The exact number isn't published and it flexes with how often the user actually looks at the widget, but the working figure I plan around is on the order of <strong>40 to 70 wake-ups a day</strong>. That's it. Spread across 24 hours, that's a refresh every 20–35 minutes at best.</p>
+      <p>So a timer that polls your API every minute is dead on arrival. You'd blow the entire day's budget before lunch, and WidgetKit's response to a spendthrift extension is to quietly stop honouring your reload requests. The widget goes stale, you can't reproduce it on your own device because you open the app constantly (which earns budget back), and you ship a bug you can't see. I've done exactly this. It's miserable.</p>
+
+      <div class="callout">
+        <span class="clabel">The trap</span>
+        <p>The budget is invisible in development. You launch from Xcode, you open the host app every few minutes, and the system rewards that engagement with generous reloads. Your widget looks perfectly fresh. On a real user's phone — where the app sits untouched for hours — the same widget starves. Test by installing a build, then leaving the phone alone overnight.</p>
+      </div>
+
+      <p>The escape is to stop thinking of a reload as "fetch the data" and start thinking of it as "fetch <em>enough data to cover the next several hours</em>." One wake-up should produce many entries.</p>
+
+      <h2>Pre-computing a window of entries</h2>
+      <p>This is the move that makes WidgetKit pleasant. If your data is predictable for a while — a countdown, a meeting agenda, a medication schedule, the day's tide times, anything that unfolds on a known clock — you compute all of it in a single <code>getTimeline</code> call and return one entry per moment you want the display to change.</p>
+      <p>Say a widget counts down to an event and you want it to tick visibly. You don't reload every minute. You build, in one pass, sixty entries spaced a minute apart, each pre-rendering the countdown at that minute. The system stores the lot, and for the next hour it advances the widget through them on its own — your extension stays asleep the entire time, and you've spent exactly one reload from the budget.</p>
+
+      <pre><code>import WidgetKit
+import SwiftUI
+
+struct CountdownEntry: TimelineEntry {
+    let date: Date          // when WidgetKit should show this entry
+    let remaining: TimeInterval
+}
+
+struct CountdownProvider: TimelineProvider {
+
+    func placeholder(in context: Context) -&gt; CountdownEntry {
+        CountdownEntry(date: .now, remaining: 3600)
+    }
+
+    func snapshot(in context: Context,
+                  completion: @escaping (CountdownEntry) -&gt; Void) {
+        // Cheap and synchronous — the gallery is waiting on this.
+        completion(CountdownEntry(date: .now, remaining: remainingFromCache()))
+    }
+
+    func timeline(in context: Context,
+                  completion: @escaping (Timeline&lt;CountdownEntry&gt;) -&gt; Void) {
+        let target = EventStore.nextEventDate()
+        let now = Date()
+
+        // One entry per minute for the next hour — pre-rendered, no further wakes.
+        var entries: [CountdownEntry] = []
+        for minute in 0..&lt;60 {
+            let tick = Calendar.current.date(byAdding: .minute,
+                                             value: minute, to: now)!
+            guard tick &lt; target else { break }
+            entries.append(CountdownEntry(date: tick,
+                                          remaining: target.timeIntervalSince(tick)))
+        }
+
+        // Come back at the end of the window and rebuild the next hour.
+        let refresh = entries.last?.date ?? now.addingTimeInterval(3600)
+        completion(Timeline(entries: entries, policy: .after(refresh)))
+    }
+}</code></pre>
+
+      <p>Notice what that <code>for</code> loop bought us: the widget animates through sixty distinct states on one wake-up. The cost to the budget is a single reload per hour — roughly 24 a day, comfortably under the ceiling, with room to spare for the times something real changes.</p>
+
+      <h2>Choosing the reload policy</h2>
+      <p>The second argument to <code>Timeline</code> is a <code>TimelineReloadPolicy</code>, and it answers exactly one question: once the system reaches the last entry, when should it wake you for a fresh timeline? There are three, and picking the wrong one is the difference between fresh and frozen.</p>
+      <ul>
+        <li><strong><code>.atEnd</code></strong> — reload as soon as the final entry's date passes. Use it when you genuinely can't predict the next window until the current one runs out. It's the most eager of the three, so reach for it sparingly.</li>
+        <li><strong><code>.after(date)</code></strong> — don't even consider reloading until this date. This is the one I use most. It lets you say "I've covered the next hour; come back then," which is precisely the contract that keeps you inside budget. Pad it slightly past your last entry so you're not racing the clock.</li>
+        <li><strong><code>.never</code></strong> — never reload on your own; the timeline is final until something external tells WidgetKit otherwise. This sounds useless but it's the right answer surprisingly often: a widget whose only meaningful changes come from user action in the app should sit perfectly still until the app pokes it.</li>
+      </ul>
+      <p>One subtlety: a policy is a request, not a guarantee. WidgetKit treats <code>.after(date)</code> as "no earlier than," and it may still wake you later than you asked if the user isn't engaging, or — within budget — a little around the requested time. Design for "roughly then," never "exactly then."</p>
+
+      <h2>Pushing changes from the app with WidgetCenter</h2>
+      <p>So how does a <code>.never</code> widget ever update? Or a countdown where the user just added a new event that should appear immediately? The answer lives in the host app, not the extension: <code>WidgetCenter</code>.</p>
+      <p>When something real changes — the user logs a workout, marks a task done, changes the tracked stock — the <em>app</em> writes the new state to the shared container (an App Group <code>UserDefaults</code> or a shared store) and then explicitly asks WidgetKit to rebuild the affected timelines.</p>
+
+      <pre><code>// In the host app, right after the underlying data changes:
+func userDidComplete(_ task: Task) {
+    SharedStore.save(task)                       // App Group container
+    WidgetCenter.shared.reloadTimelines(ofKind: "TaskWidget")
+}</code></pre>
+
+      <p>Always prefer <code>reloadTimelines(ofKind:)</code> over the blunt <code>reloadAllTimelines()</code> — you only want to spend budget on the widget that actually changed. And resist calling it on every keystroke or scroll. A reload triggered by a concrete, user-visible state change is exactly what the system wants; a reload fired in a loop is just polling wearing a different hat, and it'll get you throttled the same way.</p>
+
+      <h2>Relevance and the Smart Stack</h2>
+      <p>On the lock screen and in the Smart Stack, iOS decides <em>which</em> widget to surface at any moment, and you get a vote. Each <code>TimelineEntry</code> can carry a <code>TimelineEntryRelevance</code> with a <code>score</code> and an optional <code>duration</code>. The score is unitless and only meaningful relative to your other entries — a higher number says "this moment matters more, rotate me to the top."</p>
+
+      <pre><code>let entry = CountdownEntry(date: tick,
+                           remaining: target.timeIntervalSince(tick))
+// Climb the stack as the event gets close.
+entry.relevance = TimelineEntryRelevance(
+    score: remaining &lt; 600 ? 90 : 20,           // last 10 minutes: surface me
+    duration: 600
+)</code></pre>
+
+      <p>The payoff is that your widget appears on its own — the boarding-pass widget rises an hour before the flight, the workout summary surfaces in the evening — without the user digging for it. It's a small touch that, in the apps where it fits, does more for perceived quality than almost anything else in the extension.</p>
+
+      <h2>Keep the snapshot honest and fast</h2>
+      <p>A last practical note that costs people review time. <code>snapshot(in:)</code> is on the critical path for the widget gallery and for previews, and the system expects it back quickly. Do not make a network call there. Read from your shared cache, and if there's nothing cached, return believable placeholder data — <code>context.isPreview</code> tells you when you're being asked purely for display. Heavy or slow snapshots make the whole add-widget experience feel broken, and that's the first thing a user sees.</p>
+
+      <p>The reframe that finally made WidgetKit make sense to me was to stop fighting the budget and start designing within it. A widget isn't a window onto live data; it's a short film you render in advance and let the system play back. Compute a generous window of entries in one pass, pick <code>.after</code> so you only wake when the window runs dry, push from the app with <code>reloadTimelines(ofKind:)</code> when reality actually shifts, and lean on relevance to show up at the right moment. Do that and the widget stays fresh on a phone you haven't touched all day — which is the only place it has to work.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Live Activities and the Dynamic Island for a live workout · Dzionis Brek</title>
+<meta name="description" content="How I built iRunning's live workout into a Live Activity with ActivityKit — defining attributes, updating within the budget, and designing every Dynamic Island presentation for a glance the size of a coin." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Live Activities and the Dynamic Island for a live workout" />
+<meta property="og:description" content="ActivityKit, update budgets, and designing for a 2 cm island — the lessons from putting a live run in the Dynamic Island." />
+<meta property="og:url" content="https://dzionis.by/writing/live-activities-dynamic-island.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · SwiftUI</span>
+      <h1>Live Activities and the Dynamic Island for a live workout</h1>
+      <div class="post-meta">
+        <span>August 25, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">ActivityKit</span>
+        <span class="chip">WidgetKit</span>
+        <span class="chip">SwiftUI</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">A runner starts a workout in iRunning, locks the phone, and slides it into an armband. For the next 40 minutes the only thing they'll see is the Dynamic Island — a black pill maybe 2 cm wide. That tiny rectangle is now your entire UI. Here's how I built it, and what I learned designing for a glance the size of a coin.</p>
+
+      <p>A <strong>Live Activity</strong> is a piece of your app's UI that lives outside your app: on the Lock Screen and, on the supported iPhones, in the Dynamic Island. It's the right tool whenever something is happening <em>now</em> and the user wants to check on it without unlocking and launching anything — a food delivery, a sports score, a boarding gate. A run is almost the platonic case. The thing the runner cares about (elapsed time, distance, pace) changes continuously, they want it at a glance, and the phone is usually locked in a pocket or strapped to an arm.</p>
+
+      <p>The framework is <code>ActivityKit</code>, and the views are built with <code>WidgetKit</code> and SwiftUI in your widget extension — the same extension that holds your home-screen widgets. There's no separate "Live Activity target." If you've shipped a widget, you already have the scaffolding.</p>
+
+      <h2>The shape of the data: static vs. dynamic</h2>
+      <p>Every Live Activity is described by an <code>ActivityAttributes</code> type, and the single most important design decision is what goes where inside it. The type splits in two:</p>
+      <ul>
+        <li>The <strong>static</strong> part — properties on the struct itself. These are fixed for the lifetime of the activity. You set them once, at request time, and they never change. For a run: the workout type, maybe the goal the runner picked.</li>
+        <li>The <strong>dynamic</strong> part — a nested <code>ContentState</code> struct. This is everything that updates: elapsed time, distance, current pace, heart rate. Every update you push replaces the whole <code>ContentState</code>.</li>
+      </ul>
+      <p>Get this split right and the rest falls into place. The mistake I see — and made myself the first time — is stuffing something into the static part that turns out to change, then having no way to update it. When in doubt, put it in <code>ContentState</code>. Both halves must be <code>Codable</code>, because the system serializes them to render your views in a separate process.</p>
+
+      <pre><code>import ActivityKit
+import Foundation
+
+struct RunAttributes: ActivityAttributes {
+    // Static — fixed for the whole run.
+    let workoutTitle: String          // "Morning Run"
+    let startedAt: Date
+
+    // Dynamic — replaced on every update.
+    struct ContentState: Codable, Hashable {
+        var distanceMeters: Double
+        var elapsed: TimeInterval
+        var paceSecondsPerKm: Int     // 0 == not enough data yet
+        var heartRate: Int?
+    }
+}</code></pre>
+
+      <h2>Starting, updating, ending</h2>
+      <p>The lifecycle is three calls. You <code>request</code> an activity when the run starts, <code>update</code> it as the numbers change, and <code>end</code> it when the runner stops. Requesting hands back an <code>Activity</code> handle you hold onto for the duration.</p>
+
+      <pre><code>import ActivityKit
+
+final class RunActivityController {
+    private var activity: Activity&lt;RunAttributes&gt;?
+
+    func start(title: String) {
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
+
+        let attributes = RunAttributes(workoutTitle: title, startedAt: .now)
+        let initial = RunAttributes.ContentState(
+            distanceMeters: 0, elapsed: 0, paceSecondsPerKm: 0, heartRate: nil
+        )
+
+        do {
+            activity = try Activity.request(
+                attributes: attributes,
+                content: .init(state: initial, staleDate: .now.addingTimeInterval(60)),
+                pushType: nil          // local updates only — see below
+            )
+        } catch {
+            // Throws if the user disabled Live Activities, or you're over
+            // the limit of concurrent activities. Fail quietly.
+            print("Couldn't start activity: \(error)")
+        }
+    }
+
+    func update(_ state: RunAttributes.ContentState) async {
+        await activity?.update(
+            ActivityContent(state: state,
+                            staleDate: .now.addingTimeInterval(60))
+        )
+    }
+
+    func finish(_ final: RunAttributes.ContentState) async {
+        await activity?.end(
+            ActivityContent(state: final, staleDate: nil),
+            dismissalPolicy: .after(.now.addingTimeInterval(60 * 60))
+        )
+    }
+}</code></pre>
+
+      <p>Note the <code>staleDate</code> on every content value. That's a promise to the system: "if you haven't heard from me by this time, assume my data is old." When that date passes, the system can dim the activity and your views get a chance to show a stale state. For a run I set it about 60 seconds out and refresh it on every update; if updates stop because the app was killed, the island stops claiming a pace that's a minute out of date.</p>
+
+      <h2>Local updates, not push — for a workout</h2>
+      <p>There are two ways to update a Live Activity. You can call <code>update</code> directly from your app, or you can send an <strong>APNs push</strong> to a special per-activity push token and let the system update it even when your app isn't running. The push path is what makes a sports app's score change while the app is fully suspended.</p>
+      <p>For a workout, you almost always want <strong>local</strong> updates, and the reason is a quirk most people miss: a running app that's actively recording with Core Location is <em>already awake in the background</em>. The location session keeps the process alive, so the same code that appends a coordinate to the track can call <code>activity.update(...)</code> in the same breath. There's no server, no push token, no APNs round trip. The data is already on the device; pushing it through Apple's servers just to land back on the same phone would be absurd.</p>
+
+      <div class="callout">
+        <span class="clabel">Rule of thumb</span>
+        <p>Reach for push updates only when the truth lives on a server and your app may be suspended — live scores, delivery ETAs, ride dispatch. If the numbers are generated <em>on the device</em> by a background session you already own, update locally. A run is the second case.</p>
+      </div>
+
+      <h2>The update budget, and not blowing it</h2>
+      <p>You cannot update a Live Activity as fast as your GPS fires. The system meters updates — both local and push — and an app that hammers it will find later updates quietly dropped or delayed, and frequent <em>budget-busting</em> apps can have their Live Activity privileges throttled by the system. The exact numbers aren't published and they shift between OS versions, so don't engineer to a magic constant. Engineer to a principle: <strong>update on meaningful change, not on a timer.</strong></p>
+      <p>In iRunning I throttle to roughly one update every few seconds, and only when something a human would notice has actually moved — distance ticked past the next tenth of a kilometre, pace shifted, the heart-rate zone changed. Between those, the island doesn't need me. There's one more trick that removes most of the pressure entirely.</p>
+
+      <h3>Let the system count the clock</h3>
+      <p>The elapsed timer is the thing that changes every second, and if you tried to push every tick you'd exhaust the budget in under a minute. You don't have to. SwiftUI's <code>Text</code> can render a live-updating timer entirely on the system's side — you give it a date range or a counting style, and it animates the seconds for you without a single update call.</p>
+
+      <pre><code>// Counts up from the run's start, ticking every second —
+// with zero update calls from your app.
+Text(timerInterval: context.attributes.startedAt...Date.distantFuture,
+     countsDown: false)
+    .monospacedDigit()
+    .font(.system(.title2, design: .rounded))</code></pre>
+
+      <p>Once the clock is self-updating, your actual <code>update</code> calls only need to carry the things the system <em>can't</em> derive — distance, pace, heart rate — and those move slowly enough that a sane throttle never comes near the budget. This one shift is the difference between a Live Activity that feels alive and one that gets throttled into a frozen pill ten minutes in.</p>
+
+      <h2>Designing for a coin: the presentations</h2>
+      <p>Here's where it stops being plumbing and starts being design. A single Live Activity has to render in <em>five</em> different shapes, and you're responsible for all of them in one <code>ActivityConfiguration</code>:</p>
+      <ul>
+        <li><strong>Lock Screen / banner</strong> — the roomiest. A full-width SwiftUI view. This is where you can afford a label and a unit.</li>
+        <li><strong>Compact leading & trailing</strong> — the two slivers hugging the TrueDepth camera when nothing else is competing for the island. Maybe 30 points each. Room for one glyph and one number per side, and nothing else.</li>
+        <li><strong>Minimal</strong> — when <em>another</em> activity is also live, yours collapses to a single circle. One number, or one symbol. That's the entire budget.</li>
+        <li><strong>Expanded</strong> — what you get on a long-press. Regions (leading, trailing, center, bottom) that you fill like a small dashboard.</li>
+      </ul>
+
+      <pre><code>import WidgetKit
+import SwiftUI
+
+struct RunLiveActivity: Widget {
+    var body: some WidgetConfiguration {
+        ActivityConfiguration(for: RunAttributes.self) { context in
+            // Lock Screen — the roomy one.
+            RunLockScreenView(context: context)
+        } dynamicIsland: { context in
+            DynamicIsland {
+                DynamicIslandExpandedRegion(.leading) {
+                    Label(context.state.distanceMeters.km, systemImage: "figure.run")
+                }
+                DynamicIslandExpandedRegion(.trailing) {
+                    Text(context.state.paceSecondsPerKm.paceString)
+                        .monospacedDigit()
+                }
+                DynamicIslandExpandedRegion(.bottom) {
+                    Text(timerInterval: context.attributes.startedAt...Date.distantFuture,
+                         countsDown: false)
+                        .font(.system(.largeTitle, design: .rounded))
+                        .monospacedDigit()
+                }
+            } compactLeading: {
+                Image(systemName: "figure.run")
+            } compactTrailing: {
+                Text(context.state.distanceMeters.kmShort)   // "5.2"
+                    .monospacedDigit()
+            } minimal: {
+                Image(systemName: "figure.run")
+            }
+            .keylineTint(.green)
+        }
+    }
+}</code></pre>
+
+      <p>Designing for the compact and minimal modes is a discipline of <em>subtraction</em>. The first version of mine tried to show pace <em>and</em> distance in the trailing sliver and it was an unreadable smear at arm's length. The fix was to ask, for each mode, one question: if the runner gets exactly one number here, which one? On the move, it's distance. So the compact trailing shows <code>5.2</code> and the leading shows the little runner glyph, and that's it. Pace and heart rate live in the expanded view, for when someone deliberately looks. Use <code>monospacedDigit()</code> everywhere — without it the pill jitters as the digits change width, and a jittering number reads as broken even when it's correct.</p>
+
+      <h2>Ending, and the dismissal policy</h2>
+      <p>When the run ends, how the activity leaves matters as much as how it arrived. <code>end</code> takes a <code>dismissalPolicy</code>:</p>
+      <ul>
+        <li><code>.immediate</code> — gone at once. Too abrupt for a workout; the runner just finished and wants the final numbers.</li>
+        <li><code>.default</code> — the system keeps it around briefly, then clears it.</li>
+        <li><code>.after(date)</code> — you keep it on the Lock Screen until a time you choose, up to a few hours.</li>
+      </ul>
+      <p>I end with a final <code>ContentState</code> holding the completed totals and <code>.after</code> about an hour out. The finished run sits on the Lock Screen showing the final distance and time — a quiet little trophy — and clears itself before it goes stale. Always send the <em>final</em> state in the <code>end</code> call; if you skip it, the activity freezes on whatever the last <code>update</code> said, which is never the real total.</p>
+
+      <p>The whole thing comes down to a single reframing. You are not designing a screen; you are designing a glance the size of a coin, glimpsed mid-stride, in the rain, by someone who will not stop running to read it. Pick the one number that earns its place. Let the system count the clock so you never fight the budget. End with the totals so the last thing they see is the run they actually did. Do that, and a 2 cm pill becomes the best part of the app — the part they never have to open.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

@@ -148,6 +148,28 @@ footer{border-top:1px solid var(--line-soft);padding:30px var(--gutter);margin-t
 .foot-inner a{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);transition:color .2s}
 .foot-inner a:hover{color:var(--signal)}
 
+/* ============================== LIST / ARCHIVE PAGE ============================== */
+.list{max-width:var(--measure);margin:0 auto;padding:clamp(40px,7vw,84px) var(--gutter) clamp(54px,8vw,100px)}
+.list-head{margin-bottom:clamp(28px,5vw,44px)}
+.list-head h1{font-family:var(--display);color:var(--paper);font-weight:700;
+  font-size:clamp(2rem,5vw,2.9rem);line-height:1.06;letter-spacing:-.02em;margin:.45em 0 .42em}
+.list-sub{color:var(--mist);max-width:58ch}
+
+/* post list — mirrors the Writing section in index.html; drafts are non-links */
+.posts{display:grid;gap:0;border-top:1px solid var(--line-soft)}
+.post{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 28px;align-items:baseline;
+  padding:clamp(20px,3vw,26px) 0;border-bottom:1px solid var(--line-soft);transition:padding-left .25s}
+a.post:hover{padding-left:14px}
+.post .ptitle{font-family:var(--display);font-weight:500;color:var(--paper);
+  font-size:clamp(1.1rem,2vw,1.32rem);letter-spacing:-.01em;transition:color .2s}
+a.post:hover .ptitle{color:var(--signal)}
+.post .dek{grid-column:1/2;color:var(--mist);font-size:.95rem;margin-top:4px;max-width:62ch}
+.post .pmeta{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--mist-2);white-space:nowrap;text-align:right}
+.post--draft{opacity:.6}
+.post--draft .pmeta{color:var(--amber)}
+@media(max-width:560px){ .post{grid-template-columns:1fr} .post .pmeta{text-align:left} }
+
 /* ============================== MOTION / A11Y ============================== */
 :focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:2px}
 @media(prefers-reduced-motion:reduce){

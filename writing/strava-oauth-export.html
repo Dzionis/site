@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<!-- Post — copy _TEMPLATE.html for new ones. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>One-tap Strava export over OAuth 2.0 · Dzionis Brek</title>
+<meta name="description" content="The OAuth 2.0 token dance with PKCE from a native iOS app: ASWebAuthenticationSession for consent, Keychain for the refresh token, and uploading a finished run to Strava." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="One-tap Strava export over OAuth 2.0" />
+<meta property="og:description" content="The token dance, PKCE, and keeping refresh tokens out of trouble — exporting a finished run from a native iOS app to Strava." />
+<meta property="og:url" content="https://dzionis.by/writing/strava-oauth-export.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">iRunning · Integrations</span>
+      <h1>One-tap Strava export over OAuth 2.0</h1>
+      <div class="post-meta">
+        <span>January 12, 2026</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Swift</span>
+        <span class="chip">OAuth</span>
+        <span class="chip">Networking</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">"Send to Strava" is one button. Behind it is a small protocol that trips up more iOS engineers than it should — not because OAuth is hard, but because almost every part of it is about handling tokens without doing something careless. Here's the whole flow as it ships in iRunning.</p>
+
+      <p>A runner finishes a 10K, taps a button, and a few seconds later the activity is on their Strava feed. That's the feature. The work underneath is the OAuth 2.0 <strong>authorization-code flow with PKCE</strong>: bounce the user to Strava's consent screen, get a short-lived authorization code back, trade it for tokens, and then keep those tokens alive responsibly for months without ever asking the user to log in again. Get any of the four steps slightly wrong and you either leak credentials or annoy the user into never tapping the button again.</p>
+
+      <h2>Why not just store a password?</h2>
+      <p>You can't, and you wouldn't want to. Strava — like every serious API — doesn't let a third-party app collect the user's password. Instead the user authenticates <em>on Strava's own page</em>, and your app receives a token that says "this person granted iRunning permission to write activities, and nothing else." The token is scoped, it expires, and the user can revoke it from Strava's settings without changing their password. That separation is the entire point of OAuth: your app never holds the keys to the account, only a narrow, revocable lease.</p>
+      <p>The native-app version of this dance adds one wrinkle. A web server can keep a <code>client_secret</code> truly secret; an iOS app cannot — anything bundled in your binary can be extracted. PKCE (Proof Key for Code Exchange) exists precisely to close that gap, and it's non-negotiable for a public client like a mobile app.</p>
+
+      <h2>PKCE in two sentences</h2>
+      <p>Before sending the user off to consent, generate a random high-entropy string — the <em>code verifier</em> — and keep it in memory. Send only its SHA-256 hash — the <em>code challenge</em> — on the authorization request; later, when you exchange the code for tokens, present the original verifier. The server hashes what you send and checks it matches the challenge it saw earlier, which proves the app redeeming the code is the same app that started the flow. An attacker who intercepts the authorization code on the callback can't use it, because they never had the verifier.</p>
+
+      <pre><code>import CryptoKit
+import Foundation
+
+enum PKCE {
+    /// 32 random bytes, base64url-encoded — the secret we keep in memory.
+    static func makeVerifier() -&gt; String {
+        var bytes = [UInt8](repeating: 0, count: 32)
+        _ = SecRandomCopyBytes(kSecRandomDefault, bytes.count, &amp;bytes)
+        return Data(bytes).base64URLEncodedString()
+    }
+
+    /// SHA-256 of the verifier, base64url-encoded — the value we send.
+    static func challenge(for verifier: String) -&gt; String {
+        let digest = SHA256.hash(data: Data(verifier.utf8))
+        return Data(digest).base64URLEncodedString()
+    }
+}
+
+extension Data {
+    /// base64url = base64 with +/ swapped for -_ and no padding.
+    func base64URLEncodedString() -&gt; String {
+        base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+    }
+}</code></pre>
+
+      <h2>The consent screen: ASWebAuthenticationSession, not a webview</h2>
+      <p>This is the single most common mistake I see. People drop a <code>WKWebView</code> into a modal, point it at the authorization URL, and watch for the redirect. Don't. An in-app webview means <em>your</em> process can read everything the user types — the whole trust model collapses, Strava's login may refuse to render, and Apple's reviewers will reject it. The correct tool is <code>ASWebAuthenticationSession</code> from <code>AuthenticationServices</code>. It opens the consent page in a system-managed browser context that shares Safari's cookies (so a logged-in user often skips straight to the consent button), and it hands you the callback URL when the flow completes — without your app ever touching the page.</p>
+      <p>The callback comes back to a <strong>custom URL scheme</strong> you register in your <code>Info.plist</code> — say <code>irunning://strava-callback</code>. You declare that scheme as the <code>callbackURLScheme</code>, and the session intercepts the redirect to it automatically.</p>
+
+      <pre><code>import AuthenticationServices
+
+@MainActor
+final class StravaAuth: NSObject, ASWebAuthenticationPresentationContextProviding {
+
+    private let clientID = "YOUR_CLIENT_ID"
+    private let callbackScheme = "irunning"
+    private var session: ASWebAuthenticationSession?
+
+    /// Returns an authorization code, or throws if the user cancels.
+    func authorize() async throws -&gt; (code: String, verifier: String) {
+        let verifier = PKCE.makeVerifier()
+        let challenge = PKCE.challenge(for: verifier)
+
+        var components = URLComponents(string: "https://www.strava.com/oauth/mobile/authorize")!
+        components.queryItems = [
+            .init(name: "client_id", value: clientID),
+            .init(name: "redirect_uri", value: "\(callbackScheme)://strava-callback"),
+            .init(name: "response_type", value: "code"),
+            .init(name: "approval_prompt", value: "auto"),
+            .init(name: "scope", value: "activity:write,read"),
+            .init(name: "code_challenge", value: challenge),
+            .init(name: "code_challenge_method", value: "S256"),
+        ]
+
+        let callbackURL: URL = try await withCheckedThrowingContinuation { continuation in
+            let session = ASWebAuthenticationSession(
+                url: components.url!,
+                callbackURLScheme: callbackScheme
+            ) { url, error in
+                if let url { continuation.resume(returning: url) }
+                else { continuation.resume(throwing: error ?? AuthError.cancelled) }
+            }
+            session.presentationContextProvider = self
+            session.prefersEphemeralWebBrowserSession = false  // reuse Safari login
+            session.start()
+            self.session = session
+        }
+
+        // Pull ?code=… off the callback. Bail if Strava sent ?error=access_denied.
+        guard let code = URLComponents(url: callbackURL, resolvingAgainstBaseURL: false)?
+            .queryItems?.first(where: { $0.name == "code" })?.value
+        else { throw AuthError.noCode }
+
+        return (code, verifier)
+    }
+
+    func presentationAnchor(for _: ASWebAuthenticationSession) -&gt; ASPresentationAnchor {
+        ASPresentationAnchor()  // return your active window in real code
+    }
+}</code></pre>
+
+      <p>Two details that matter. Keep a strong reference to the session — if it deallocates mid-flow the browser sheet just vanishes. And set <code>prefersEphemeralWebBrowserSession</code> to <code>false</code> so a user already signed into Strava on the device doesn't have to type their password again; flip it to <code>true</code> only if you have a genuine reason to want a clean, cookie-less session every time.</p>
+
+      <h2>Trading the code for tokens</h2>
+      <p>The authorization code is single-use and lives for only a few minutes. Immediately <code>POST</code> it to the token endpoint along with the PKCE verifier. What comes back is the prize: an <strong>access token</strong> (good for a few hours), a <strong>refresh token</strong> (good until revoked), and an <code>expires_at</code> timestamp telling you exactly when the access token dies.</p>
+
+      <pre><code>struct TokenResponse: Decodable {
+    let accessToken: String
+    let refreshToken: String
+    let expiresAt: TimeInterval   // Unix seconds
+
+    enum CodingKeys: String, CodingKey {
+        case accessToken = "access_token"
+        case refreshToken = "refresh_token"
+        case expiresAt = "expires_at"
+    }
+}
+
+func exchange(code: String, verifier: String) async throws -&gt; TokenResponse {
+    var request = URLRequest(url: URL(string: "https://www.strava.com/oauth/token")!)
+    request.httpMethod = "POST"
+    request.setValue("application/x-www-form-urlencoded",
+                     forHTTPHeaderField: "Content-Type")
+    let body = [
+        "client_id": clientID,
+        "code": code,
+        "grant_type": "authorization_code",
+        "code_verifier": verifier,
+    ]
+    request.httpBody = body
+        .map { "\($0)=\($1.addingPercentEncoding(withAllowedCharacters: .urlQueryValueAllowed)!)" }
+        .joined(separator: "&amp;")
+        .data(using: .utf8)
+
+    let (data, response) = try await URLSession.shared.data(for: request)
+    guard (response as? HTTPURLResponse)?.statusCode == 200 else {
+        throw AuthError.exchangeFailed
+    }
+    return try JSONDecoder().decode(TokenResponse.self, from: data)
+}</code></pre>
+
+      <h2>Where the refresh token lives</h2>
+      <p>The refresh token is the long-lived secret — the thing that lets your app act on the account for months. <strong>It belongs in the Keychain, never in <code>UserDefaults</code>.</strong> <code>UserDefaults</code> is an unencrypted plist; it lands in iTunes/iCloud backups in the clear and is trivially readable on a jailbroken or simply unlocked device. The Keychain is hardware-encrypted, gated by the device passcode, and won't sync to a backup if you pick the right accessibility class. This isn't a nicety — a leaked refresh token is a standing key to someone's account.</p>
+
+      <div class="callout">
+        <span class="clabel">Accessibility class</span>
+        <p>Store it with <code>kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly</code>. <code>AfterFirstUnlock</code> lets a background refresh read it without the device being actively unlocked; <code>ThisDeviceOnly</code> keeps it out of backups and off other devices entirely. Avoid <code>kSecAttrAccessibleAlways</code> — it's been deprecated for years for exactly this reason.</p>
+      </div>
+
+      <p>The access token, by contrast, is short-lived and replaceable — I keep it in memory and just re-derive it from the refresh token whenever the app cold-starts. There's no value in persisting something that expires in a few hours.</p>
+
+      <h2>Refreshing silently</h2>
+      <p>Every call to Strava starts the same way: check whether the access token is still alive, and if not, mint a new one from the refresh token before doing anything else. The user never sees this — no browser, no prompt, just a quick background <code>POST</code>. The only difference from the initial exchange is the grant type and that you send the refresh token instead of a code.</p>
+      <p>One subtlety bites people: Strava <em>rotates</em> the refresh token on some refreshes, returning a new one in the response. If you ignore it and keep using the old one, your next refresh fails and the user gets silently logged out. Always persist whatever refresh token comes back.</p>
+
+      <pre><code>func validAccessToken() async throws -&gt; String {
+    if let token = inMemoryAccess, Date().timeIntervalSince1970 &lt; expiresAt - 60 {
+        return token   // still good (with a 60s safety margin)
+    }
+    guard let refresh = Keychain.load("strava.refresh") else {
+        throw AuthError.notConnected   // need the full consent flow again
+    }
+
+    let body = [
+        "client_id": clientID,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh,
+    ]
+    let fresh = try await postForm("https://www.strava.com/oauth/token", body)
+
+    // Strava may hand back a NEW refresh token — persist it or lose access.
+    Keychain.save(fresh.refreshToken, for: "strava.refresh")
+    inMemoryAccess = fresh.accessToken
+    expiresAt = fresh.expiresAt
+    return fresh.accessToken
+}</code></pre>
+
+      <h2>Uploading the run, then polling</h2>
+      <p>With a valid access token in hand, the export itself is almost mundane. Strava's upload endpoint takes a file — I send a <strong>GPX</strong> built from the same gated, denoised track I use for the map, though TCX works too if you want to carry heart-rate and per-lap data. The call is a <code>multipart/form-data</code> <code>POST</code> with the file, a <code>data_type</code> of <code>gpx</code>, and a name and description.</p>
+      <p>The catch: the upload is <strong>asynchronous on Strava's side</strong>. The initial <code>POST</code> returns an upload <em>id</em> and a status of "Your activity is still being processed," not a finished activity. You then poll <code>GET /uploads/{id}</code> every couple of seconds until the response carries an <code>activity_id</code> (done) or an <code>error</code> (rejected — usually a duplicate of an activity already on the account). Poll with backoff and a sane ceiling; don't hammer it in a tight loop. When <code>activity_id</code> arrives, that's your one-tap success, and you can deep-link the user straight to the activity.</p>
+
+      <h2>Rate limits and revocation</h2>
+      <p>Two operational realities you have to design for. First, <strong>rate limits</strong>: Strava enforces both a short-window cap (per 15 minutes) and a daily cap, and it tells you where you stand in the <code>X-RateLimit-Limit</code> and <code>X-RateLimit-Usage</code> response headers. Read them. When you get a <code>429</code>, stop and back off — retrying immediately just digs the hole deeper and can get your whole app's API access throttled, not just one user's.</p>
+      <p>Second, <strong>revocation</strong>: a user can disconnect your app from Strava's website at any moment, and the first you'll hear of it is a <code>401</code> on a call you expected to succeed. Treat a <code>401</code> after a fresh refresh as "the grant is gone" — clear the Keychain entry, drop the in-memory token, and surface a quiet "reconnect Strava" state rather than retrying into a wall. Failing gracefully here is the difference between a one-time annoyance and a support ticket.</p>
+
+      <p>None of these pieces is individually hard. PKCE is thirty lines, <code>ASWebAuthenticationSession</code> does the heavy lifting on consent, and the uploads are ordinary HTTP. What makes an OAuth integration feel solid — or fragile — is almost entirely about the tokens: getting consent through the system browser instead of a webview, putting the refresh token in the Keychain instead of a plist, honoring the rotated token you get back, and treating expiry, rate limits, and revocation as normal states rather than crashes. Handle the tokens responsibly and the one-tap button just works, quietly, for months. That's the whole job.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Migrating from Core Data to SwiftData on a shipping app · Dzionis Brek</title>
+<meta name="description" content="SwiftData is Core Data underneath — which is exactly what lets you migrate a live app gradually, behind a flag, against real user data before you flip it." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Migrating from Core Data to SwiftData on a shipping app" />
+<meta property="og:description" content="The model-mapping reality, the sharp edges, and a rollout that's safe because the blast radius is small." />
+<meta property="og:url" content="https://dzionis.by/writing/coredata-to-swiftdata.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Data · Persistence</span>
+      <h1>Migrating from Core Data to SwiftData on a shipping app</h1>
+      <div class="post-meta">
+        <span>March 31, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>8 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">SwiftData</span>
+        <span class="chip">Core Data</span>
+        <span class="chip">Migration</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The reason you can migrate a live app from Core Data to SwiftData without a scary cutover is the same reason the migration sounds intimidating: SwiftData <em>is</em> Core Data. Same store, same engine, a friendlier face on top.</p>
+
+      <p>I had an app with a few years of user data sitting in a Core Data store — call it a habit tracker, tens of thousands of records on some devices, all of it irreplaceable to the person who created it. SwiftData was the obvious place to go: less boilerplate, value-type-ish models, a fetch API that doesn't read like 2010. But "obvious place to go" and "safe to ship the change" are different sentences, and the gap between them is where data-loss bugs live. This is how I closed that gap without anyone losing a single record.</p>
+
+      <h2>It's the same store underneath</h2>
+      <p>The single most important fact in this whole exercise: SwiftData and Core Data write to the same SQLite store, with a compatible schema, through the same persistence stack. SwiftData's <code>ModelContainer</code> is sitting on top of an <code>NSPersistentContainer</code>-shaped world. That's not an implementation detail to ignore — it's the entire reason a gradual migration is possible.</p>
+      <p>Because the formats line up, you can point a <code>ModelContainer</code> at the file your old Core Data stack already created and have them coexist. You don't export and re-import. You don't run a one-shot batch job that rewrites every row on launch and prays the device doesn't get backgrounded halfway through. The bytes on disk stay put; you change which API reads them. That reframes the work from "data migration" — terrifying — to "code migration" — tedious, but bounded.</p>
+
+      <h2>Annotating the models</h2>
+      <p>The mechanical part is translating each <code>NSManagedObject</code> subclass into an <code>@Model</code> class. The shape is familiar enough that it goes faster than you'd expect, but the details matter because they're what determines whether SwiftData recognizes the existing store as <em>the same</em> schema or decides it needs to migrate.</p>
+      <p>Entity names map to type names. Attributes become stored properties with matching types. To-many relationships become arrays, and you wire up inverses explicitly. The two annotations that earn their keep are <code>@Attribute(.unique)</code> for anything that was a uniqueness constraint, and <code>@Relationship</code> with an inverse and a delete rule, because getting the delete rule wrong is how you orphan rows or cascade-delete a user's history by accident.</p>
+
+      <pre><code>import SwiftData
+
+@Model
+final class Habit {
+    @Attribute(.unique) var id: UUID
+    var name: String
+    var createdAt: Date
+
+    @Relationship(deleteRule: .cascade, inverse: \Entry.habit)
+    var entries: [Entry] = []
+
+    init(id: UUID = UUID(), name: String, createdAt: Date = .now) {
+        self.id = id
+        self.name = name
+        self.createdAt = createdAt
+    }
+}
+
+@Model
+final class Entry {
+    var date: Date
+    var note: String?
+    var habit: Habit?
+
+    init(date: Date, note: String? = nil) {
+        self.date = date
+        self.note = note
+    }
+}</code></pre>
+
+      <p>The thing to internalize is that this isn't a fresh schema — it's a <em>description</em> of the schema already on disk. If your old model named the entity <code>Habit</code> with an attribute <code>createdAt</code>, the <code>@Model</code> has to agree, down to optionality. A property the old store had as non-optional that you declare optional (or vice versa) is a schema difference, and SwiftData will treat it as a migration rather than a clean attach. Most of the careful work is just making the new declarations match the old reality exactly.</p>
+
+      <h2>Versioned migrations, when you actually need them</h2>
+      <p>If the schemas match, there's no migration — SwiftData opens the store and you're done. You only reach for migration machinery when the shapes genuinely diverge: you renamed something, split an entity, changed a type. SwiftData models this with <code>VersionedSchema</code> and a <code>SchemaMigrationPlan</code>, which is the modern equivalent of Core Data's mapping models and the <code>NSMigrationManager</code> dance.</p>
+      <p>Lightweight migrations — adding an optional attribute, adding a new entity — happen automatically. The custom ones, where data has to be transformed on the way across, get a stage with a <code>willMigrate</code>/<code>didMigrate</code> hook where you do the work in code. My advice, learned the slow way: do everything you possibly can as a lightweight migration. Custom migration stages are where the data-loss bugs hide, and the best custom migration is the one you designed your schema to avoid.</p>
+
+      <div class="callout">
+        <span class="clabel">Test migrations against real stores</span>
+        <p>A migration that passes on an empty simulator database tells you the code compiles. Pull a real store from a long-time user's device (with permission), drop it into a test, and run the migration against <em>that</em>. The bug you're looking for — the one row with a null where you assumed a value, the relationship that's been dangling since iOS 14 — only exists in data that's lived a while.</p>
+      </div>
+
+      <h2>The boundary is what made this small</h2>
+      <p>Here's where the architecture paid for itself. The app never imported Core Data. It talked to a protocol I owned — the same <code>RateStore</code>-style boundary I wrote about in <a href="ios-code-that-lasts.html">the longevity post</a>. Every screen, every view model, every test went through that protocol; the Core Data specifics lived behind exactly one implementation.</p>
+      <p>So the migration, from the rest of the app's point of view, was a single new type. I wrote a <code>SwiftDataHabitStore</code> conforming to the same protocol as the old <code>CoreDataHabitStore</code>, and the call sites didn't change — they couldn't even tell. No mass find-and-replace, no recompiling the world, no UI churn. If Core Data had leaked into a hundred views, this would have been a multi-week slog with a hundred chances to break something. Behind a boundary, it was a near one-type change.</p>
+
+      <pre><code>protocol HabitStore {
+    func save(_ habit: Habit) throws
+    func all() throws -> [Habit]
+    func delete(_ habit: Habit) throws
+}
+
+// Old: CoreDataHabitStore: HabitStore  — talks to NSManagedObjectContext
+// New: SwiftDataHabitStore: HabitStore — talks to ModelContext
+
+let container = try ModelContainer(
+    for: Habit.self, Entry.self,
+    configurations: ModelConfiguration(url: storeURL) // the existing file
+)</code></pre>
+
+      <p>Pointing <code>ModelConfiguration</code> at the existing <code>storeURL</code> is the whole coexistence trick: SwiftData adopts the file the Core Data stack has been writing all along.</p>
+
+      <h2>Roll it out behind a flag</h2>
+      <p>I did not flip the whole user base over in one release. The new <code>SwiftDataHabitStore</code> shipped behind a feature flag, dark, for a full version. In that window I had both implementations in the binary and a way to choose between them per user. The first cohort was just me and the TestFlight group — real devices, real accumulated data, with the old store still the source of truth so a problem couldn't cost anyone anything.</p>
+      <p>What I verified before widening the rollout: that record counts matched after attaching the new store, that relationships resolved the same way, that the fetches the app actually runs returned identical results, and — the one that caught a real bug — that a predicate behaving slightly differently under SwiftData didn't silently drop rows from a filtered list. Only once the flag had been on for a meaningful slice of real users without a single discrepancy did I make SwiftData the default. The flag stayed in for one more release as a kill switch. Migrations are safe when you can turn them off.</p>
+
+      <h2>The sharp edges</h2>
+      <p>Three things drew blood, and they're worth naming so you budget for them. <strong>CloudKit sync</strong> is the big one: SwiftData's automatic CloudKit integration is real but opinionated, and it imposes constraints Core Data + <code>NSPersistentCloudKitContainer</code> didn't — no uniqueness constraints synced to CloudKit, every relationship optional, every attribute either optional or with a default. If you sync, design the schema for those rules from the start, because retrofitting them later is its own migration.</p>
+      <p><strong>Fetch performance</strong> is the second. The ergonomic <code>@Query</code> and array-shaped relationships make it very easy to pull more into memory than you mean to. On the big stores I had to reach for <code>FetchDescriptor</code> with explicit <code>fetchLimit</code> and <code>propertiesToFetch</code> — the SwiftData equivalents of the batching and faulting knobs you'd tune in Core Data — rather than trusting the convenient path. <strong>Predicate differences</strong> are the third: <code>#Predicate</code> is type-checked and pleasant, but it doesn't support everything <code>NSPredicate</code> did, and a string comparison or an optional-chained keypath can compile yet behave subtly differently. Test the predicates against known data; don't assume parity.</p>
+
+      <p>If there's one thing to take from this, it's that the migration was never really about SwiftData. It was about blast radius. The store format being shared meant the data never had to move; the protocol boundary meant the change touched one type instead of a hundred; the feature flag meant I could verify against real user data and still walk it back. Each of those shrank the surface area where something could go wrong. A migration on a shipping app isn't safe because the new framework is good — it's safe because, when you've done the boring work first, there's almost nothing left that can break.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

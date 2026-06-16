@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<!-- Writing archive — lists every post. Add new entries inside the POST-LIST markers. -->
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Writing — Dzionis Brek</title>
+<meta name="description" content="Notes from the build by Dzionis Brek — short, practical write-ups on iOS and watchOS engineering: GPS smoothing, watch-first design, app longevity, and ASO." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Writing — Dzionis Brek" />
+<meta property="og:description" content="Short, practical write-ups on iOS and watchOS engineering." />
+<meta property="og:url" content="https://dzionis.by/writing/" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="../index.html#top" class="nav-back">← Home</a>
+  </div>
+</header>
+
+<main>
+  <section class="list">
+    <header class="list-head">
+      <span class="eyebrow">Writing</span>
+      <h1>Notes from the build.</h1>
+      <p class="list-sub">Short, practical write-ups on the things I hit while shipping — iOS, watchOS, and the craft of getting an app out the door.</p>
+    </header>
+
+    <!--
+      ALL POSTS — newest first. To add one:
+        • published page → <a class="post" href="your-slug.html"> … </a>
+        • teaser (no page yet) → <div class="post post--draft"> … </div>
+      Keep the home-page highlights in index.html in sync if you feature it there.
+    -->
+    <div class="posts">
+      <!-- POST-LIST:START -->
+      <a class="post" href="smoothing-noisy-gps.html">
+        <span class="ptitle">Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app</span>
+        <span class="pmeta">Jun 2026 · 8 min</span>
+        <span class="dek">Why raw watch GPS jitters, and the two-step pipeline I use to get a clean route.</span>
+      </a>
+      <a class="post" href="watch-first-intervals.html">
+        <span class="ptitle">Watch-first, not watch-also: designing intervals for the wrist</span>
+        <span class="pmeta">May 2026 · 7 min</span>
+        <span class="dek">Treating the watch as the primary screen changes nearly every UI decision.</span>
+      </a>
+      <a class="post" href="ios-code-that-lasts.html">
+        <span class="ptitle">Fifty apps in: what actually makes iOS code last</span>
+        <span class="pmeta">Apr 2026 · 9 min</span>
+        <span class="dek">Lessons from a decade of shipping — and, harder, maintaining — App Store apps.</span>
+      </a>
+      <a class="post" href="aso-for-a-tiny-app.html">
+        <span class="ptitle">ASO for a tiny app: 200 keywords and what moved installs</span>
+        <span class="pmeta">Mar 2026 · 8 min</span>
+        <span class="dek">A small currency app as a sandbox for keywords, icons and custom product pages.</span>
+      </a>
+      <a class="post" href="watchos-background-battery.html">
+        <span class="ptitle">Keeping a watchOS workout alive without wrecking the battery</span>
+        <span class="pmeta">Feb 2026 · 8 min</span>
+        <span class="dek">HKWorkoutSession lifecycle, extended runtime, and what actually drains the battery on a long run.</span>
+      </a>
+      <a class="post" href="live-heart-rate-watchconnectivity.html">
+        <span class="ptitle">Streaming live heart rate from watch to phone</span>
+        <span class="pmeta">Jan 2026 · 7 min</span>
+        <span class="dek">The real-time channel, throttling, and what to do when the phone is asleep.</span>
+      </a>
+      <a class="post" href="strava-oauth-export.html">
+        <span class="ptitle">One-tap Strava export over OAuth 2.0</span>
+        <span class="pmeta">Jan 2026 · 8 min</span>
+        <span class="dek">The token dance, PKCE, and keeping refresh tokens out of trouble.</span>
+      </a>
+      <a class="post" href="mapkit-route-performance.html">
+        <span class="ptitle">A GPS route on MapKit that doesn't stutter when you pan</span>
+        <span class="pmeta">Dec 2025 · 7 min</span>
+        <span class="dek">MKPolyline, overlay renderers, and why point count is everything.</span>
+      </a>
+      <a class="post" href="storekit2-no-server.html">
+        <span class="ptitle">StoreKit 2 with no server: verifying purchases safely</span>
+        <span class="pmeta">Nov 2025 · 8 min</span>
+        <span class="dek">currentEntitlements, signature verification, and the offline case — without a backend.</span>
+      </a>
+      <a class="post" href="paywall-sdk-or-roll-your-own.html">
+        <span class="ptitle">RevenueCat, Adapty, or rolling your own</span>
+        <span class="pmeta">Oct 2025 · 7 min</span>
+        <span class="dek">When a paywall SDK earns its cut, and when it doesn't.</span>
+      </a>
+      <a class="post" href="remote-config-paywall-ab.html">
+        <span class="ptitle">A remote-config paywall you can A/B test without shipping a build</span>
+        <span class="pmeta">Oct 2025 · 8 min</span>
+        <span class="dek">Driving layout and price from the server, and measuring lift honestly.</span>
+      </a>
+      <a class="post" href="subscription-metrics-that-matter.html">
+        <span class="ptitle">Subscription metrics that matter</span>
+        <span class="pmeta">Sep 2025 · 7 min</span>
+        <span class="dek">LTV and retention over the day-1 conversion number that flatters you.</span>
+      </a>
+      <a class="post" href="live-activities-dynamic-island.html">
+        <span class="ptitle">Live Activities and the Dynamic Island for a live workout</span>
+        <span class="pmeta">Aug 2025 · 8 min</span>
+        <span class="dek">ActivityKit, update budgets, and designing for a 2 cm island.</span>
+      </a>
+      <a class="post" href="widgetkit-timeline-budget.html">
+        <span class="ptitle">A WidgetKit timeline that stays fresh inside Apple's budget</span>
+        <span class="pmeta">Aug 2025 · 7 min</span>
+        <span class="dek">Timeline policies, relevance, and not getting throttled.</span>
+      </a>
+      <a class="post" href="uikit-swiftui-interop.html">
+        <span class="ptitle">Mixing UIKit and SwiftUI in an app older than SwiftUI</span>
+        <span class="pmeta">Jul 2025 · 8 min</span>
+        <span class="dek">Interop without a rewrite, and which direction to bridge.</span>
+      </a>
+      <a class="post" href="swift6-concurrency-migration.html">
+        <span class="ptitle">Migrating a real app to Swift 6 strict concurrency</span>
+        <span class="pmeta">Jun 2025 · 9 min</span>
+        <span class="dek">Actors, @MainActor, and the data races the compiler finally caught.</span>
+      </a>
+      <a class="post" href="core-image-custom-kernel.html">
+        <span class="ptitle">Writing a custom Core Image kernel for a camera filter</span>
+        <span class="pmeta">Jun 2025 · 8 min</span>
+        <span class="dek">CIKernel and Metal, color management, and keeping it real-time.</span>
+      </a>
+      <a class="post" href="vision-coreml-small-model.html">
+        <span class="ptitle">On-device Vision + Core ML without shipping a 200 MB model</span>
+        <span class="pmeta">May 2025 · 8 min</span>
+        <span class="dek">Quantization, Vision requests, and staying in the app-size budget.</span>
+      </a>
+      <a class="post" href="avcapturesession-device-bugs.html">
+        <span class="ptitle">AVCaptureSession bugs that only show up on real devices</span>
+        <span class="pmeta">Apr 2025 · 7 min</span>
+        <span class="dek">Orientation, interruptions, and the simulator's lies.</span>
+      </a>
+      <a class="post" href="coredata-to-swiftdata.html">
+        <span class="ptitle">Migrating from Core Data to SwiftData on a shipping app</span>
+        <span class="pmeta">Mar 2025 · 8 min</span>
+        <span class="dek">The model-mapping reality, and a safe rollout.</span>
+      </a>
+      <a class="post" href="firebase-python-backend.html">
+        <span class="ptitle">A Python-on-Firebase backend for an iOS app</span>
+        <span class="pmeta">Mar 2025 · 8 min</span>
+        <span class="dek">Firestore and Cloud Functions in Python — and when a client-only app should grow a backend.</span>
+      </a>
+      <a class="post" href="core-bluetooth-in-production.html">
+        <span class="ptitle">Core Bluetooth in production: talking to flaky BLE hardware</span>
+        <span class="pmeta">Feb 2025 · 8 min</span>
+        <span class="dek">State restoration, reconnection, and designing around dropouts.</span>
+      </a>
+      <a class="post" href="attribution-without-creeping-people-out.html">
+        <span class="ptitle">Attribution without creeping people out</span>
+        <span class="pmeta">Jan 2025 · 7 min</span>
+        <span class="dek">AppsFlyer, Adjust, and SKAdNetwork after ATT.</span>
+      </a>
+      <a class="post" href="solo-dev-release-pipeline.html">
+        <span class="ptitle">A release pipeline for a solo dev</span>
+        <span class="pmeta">Jan 2025 · 7 min</span>
+        <span class="dek">Fastlane and Xcode Cloud, end to end.</span>
+      </a>
+      <!-- POST-LIST:END -->
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>

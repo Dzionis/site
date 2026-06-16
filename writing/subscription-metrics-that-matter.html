@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Subscription metrics that matter · Dzionis Brek</title>
+<meta name="description" content="Why LTV and paid retention predict a subscription business while installs and day-1 conversion mostly flatter you — and what to actually instrument." />
+<meta property="og:type" content="article" />
+<meta property="og:title" content="Subscription metrics that matter" />
+<meta property="og:description" content="The metrics that actually predict a subscription business versus the ones that just feel good — retention, LTV, and why churn dominates the result." />
+<meta property="og:url" content="https://dzionis.by/writing/subscription-metrics-that-matter.html" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../assets/blog.css" />
+</head>
+<body>
+
+<div class="progress" aria-hidden="true"></div>
+
+<header class="nav">
+  <div class="nav-inner">
+    <a href="../index.html#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
+    <a href="index.html" class="nav-back">← Writing</a>
+  </div>
+</header>
+
+<main>
+  <article class="article">
+    <header class="post-head">
+      <span class="eyebrow">Growth · Analytics</span>
+      <h1>Subscription metrics that matter</h1>
+      <div class="post-meta">
+        <span>September 15, 2025</span>
+        <span class="sep" aria-hidden="true"></span>
+        <span>7 min read</span>
+      </div>
+      <div class="post-tags">
+        <span class="chip">Analytics</span>
+        <span class="chip">LTV</span>
+        <span class="chip">Retention</span>
+      </div>
+    </header>
+
+    <div class="prose">
+      <p class="lede-text">The first subscription dashboard I built was a beautiful lie. Trial starts up and to the right, day-1 conversion a number I could brag about — and a business that was quietly bleeding out underneath all of it.</p>
+
+      <p>Subscription analytics has a cruel property: the metrics that feel good are mostly different from the metrics that predict whether you'll have a business in a year. The feel-good ones move fast, respond to your changes, and make a nice screenshot for the investor update. The ones that matter move slowly, lag your decisions by weeks, and are deeply unglamorous. After shipping subscriptions in a fair number of apps, I've learned to distrust anything that flatters me on day one.</p>
+
+      <h2>The funnel everyone reads wrong</h2>
+      <p>There are three numbers people lump together as "conversion," and treating them as one is the root of most bad decisions. <strong>Trial start rate</strong> is the share of users who tap the button and begin a free trial. <strong>Trial-to-paid conversion</strong> is the share of those trials that survive to the first charge. <strong>Paid retention</strong> is the share of payers who renew, month after month, year after year.</p>
+      <p>Trial start rate is the easiest to move and the least informative. Make the paywall louder, gate a feature harder, and trial starts climb — but you've often just dragged in people who never intended to pay, which makes the next number worse. Trial-to-paid tells you whether the trial delivered enough value to justify a charge. But paid retention is the one that <em>compounds</em>. A payer who renews for eighteen months is worth roughly six times one who churns after three, and nothing you do at the top of the funnel changes that arithmetic. The top of the funnel is a faucet; retention is whether the bucket has a hole in it.</p>
+
+      <h2>Cohort retention curves, and how to read them</h2>
+      <p>A single retention number is almost meaningless because it blends people who joined yesterday with people who joined last year. The only honest way to look at retention is by cohort: group users by the month they subscribed, then track each group's survival over time. What you get is a set of curves, and the <em>shape</em> of those curves tells you more than any single figure.</p>
+      <p>The first thing to look for is whether the curve <strong>flattens</strong>. Every subscription loses people early — annoyance, forgotten trials, the realization it wasn't needed. The question is whether the decline levels off into a plateau or keeps sliding toward zero. A curve that flattens at, say, 40% means you've found a core of people for whom the product is genuinely sticky, and that plateau is the real asset. A curve that never flattens means you don't have a subscription business yet; you have a slow-motion churn machine. The second thing to look for is whether <em>later cohorts sit above earlier ones</em> — that's the fingerprint of a product actually improving, and it's invisible unless you separate the cohorts.</p>
+
+      <h2>LTV, and why churn quietly owns the result</h2>
+      <p>Lifetime value gets quoted with false precision, but the intuition is simple: it's how much a subscriber pays you on average, multiplied by how long they stay. Roughly, <code>LTV ≈ ARPU × average lifetime</code>, and for a recurring product the average lifetime is approximately <code>1 / churn rate</code>. That second term is where people get blindsided.</p>
+      <p>Because lifetime is the reciprocal of churn, the relationship is brutally nonlinear. Shave monthly churn from 5% to 4% — a change that looks like a rounding error on a slide — and average lifetime jumps from 20 months to 25. That's a <strong>25% increase in LTV from a single point of churn.</strong> Meanwhile, the thing teams obsess over, raising price or nudging trial-to-paid a few points, moves LTV linearly and modestly. Churn dominates because it's in the denominator, and a small denominator is leverage. I'd rather win one point of monthly retention than ten points of trial start rate, every single time.</p>
+
+      <table>
+        <thead><tr><th>Metric</th><th>What it tells you</th><th>The trap it hides</th></tr></thead>
+        <tbody>
+          <tr><td>Installs / downloads</td><td>Top-of-funnel reach</td><td>Says nothing about intent, payment, or retention</td></tr>
+          <tr><td>Day-1 conversion</td><td>Paywall is converting <em>someone</em></td><td>A hard paywall inflates it while poisoning retention</td></tr>
+          <tr><td>Trial start rate</td><td>Willingness to try</td><td>Easy to juice; high starts can mean low-intent trials</td></tr>
+          <tr><td>Trial-to-paid</td><td>Trial delivered enough value to charge</td><td>A blended rate hides which cohorts actually pay</td></tr>
+          <tr><td>Paid retention (by cohort)</td><td>Whether the product is genuinely sticky</td><td>Lags weeks; punishes you for last quarter's mistakes</td></tr>
+          <tr><td>LTV</td><td>What a subscriber is worth over their life</td><td>One churn assumption can swing it 25%+</td></tr>
+        </tbody>
+      </table>
+
+      <h2>Why installs and day-1 are vanity</h2>
+      <p>Installs are the purest vanity metric in the catalogue. They respond to a feature on the App Store, a viral post, a holiday, the weather — anything except whether your product is worth paying for. You can double installs and shrink revenue in the same week if the new traffic is lower-intent, and the install chart will look like a triumph the whole time.</p>
+      <p>Day-1 conversion is subtler and therefore more dangerous, because it sounds like a real outcome. The trap is that it's trivially gamed by making the paywall more aggressive. Force a hard paywall on first launch and day-1 conversion shoots up — but you've converted a wave of people who hadn't yet decided they wanted the thing, and those are exactly the people who churn in month one or, worse, refund and leave a one-star review. The headline number went up; the business got more fragile. Any metric you can improve by being more annoying deserves suspicion.</p>
+
+      <h2>Leading versus lagging indicators</h2>
+      <p>The reason this is hard is that the metric that matters most — long-term paid retention — is the one you learn last. By the time an annual cohort's true retention is visible, you're a year past the decisions that shaped it. So part of the discipline is finding honest <em>leading</em> indicators: early signals that correlate with the lagging outcome you actually care about.</p>
+      <p>For most apps the best leading indicators aren't subscription events at all — they're engagement. Does a new subscriber hit the core action in their first week? Do they come back on day two and day seven? Those behaviors predict retention long before a renewal confirms it, which means you can iterate on a one-week signal instead of waiting twelve months for the verdict. The mistake is treating a leading indicator as the goal in itself. It's a proxy, useful only as long as it keeps tracking the lagging number — so you check that correlation periodically and stay ready to throw the proxy out when it stops earning its place.</p>
+
+      <div class="callout">
+        <span class="clabel">Instrument the questions, not the taps</span>
+        <p>The temptation is to log everything — every screen, every tap, every scroll — on the theory that you'll want it later. You won't. You'll drown in events nobody queries and a pipeline nobody trusts. Start from the handful of questions that would actually change a decision — does onboarding predict renewal? which trial length retains better? — and instrument only what answers them. A small set of events you trust beats a thousand you'll never open.</p>
+      </div>
+
+      <h2>What to actually instrument</h2>
+      <p>In practice the load-bearing events are few. The subscription lifecycle itself — trial start, trial conversion, renewal, cancellation, refund, grace-period entry and recovery — because that's the spine of every retention and LTV calculation, and getting it wrong corrupts everything downstream. A small number of engagement events tied to the product's core value, so you have leading indicators. And enough context on each — acquisition source, paywall variant, trial length — to slice cohorts later without re-instrumenting.</p>
+      <p>Everything past that is usually noise dressed up as diligence. The discipline isn't collecting more; it's the restraint to collect less and trust it more. A subscription dataset you actually believe is worth ten you're vaguely suspicious of, because the entire point is to make decisions on it, and you can't make decisions on numbers you don't trust.</p>
+
+      <p>The hard shift, in the end, is learning to measure the business instead of the dashboard. The dashboard rewards you for the fast, flattering numbers — installs ticking up, day-1 conversion you can post in the team channel. The business is decided by the slow, unglamorous ones: whether the cohort curve flattens, whether churn is creeping or shrinking, whether a subscriber is worth more this quarter than last. Those numbers won't make you feel good on a Tuesday. But they're the only ones that are still true a year later, which is the only timeframe a subscription business is actually played on.</p>
+    </div>
+  </article>
+
+  <div class="post-foot">
+    <a href="index.html" class="back">← All writing</a>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <span>© <span id="yr"></span> Dzionis Brek</span>
+    <span>Senior iOS Engineer · Warsaw</span>
+    <a href="../index.html#top">Home ↑</a>
+  </div>
+</footer>
+
+<script>
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var bar = document.querySelector('.progress');
+  function tick(){
+    var d = document.documentElement, max = d.scrollHeight - d.clientHeight;
+    bar.style.transform = 'scaleX(' + (max > 0 ? d.scrollTop / max : 0) + ')';
+  }
+  addEventListener('scroll', tick, { passive:true });
+  addEventListener('resize', tick);
+  tick();
+</script>
+</body>
+</html>
