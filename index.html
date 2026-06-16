@@ -2,7 +2,8 @@
 <!--
   Dzionis Brek — personal site (static, single file). Content filled from CV/LinkedIn.
   STILL OPTIONAL TO TWEAK:
-    • App roster shows names only (CV gave no descriptions) — add one-liners if you like.
+    • App roster (#work) now has a one-line description + App Store link per app. Live apps link out
+      (izi AI/Type, PartyCam, Edith, Templates, Дзякуй); delisted ones (Drive&Pay, Tix, Звезда) don't.
     • Phone number is shown publicly in #contact — remove the tel: link if you'd rather not.
     • Blog: posts are standalone pages in /writing (styles in /assets/blog.css).
       Archive at /writing/ lists every post; add one by copying writing/_TEMPLATE.html
@@ -147,11 +148,24 @@
   .notes{margin-top:20px;display:grid;gap:9px;border-top:1px solid var(--line-soft);padding-top:18px}
   .notes li{list-style:none;display:flex;gap:12px;align-items:flex-start;font-size:.95rem;color:var(--paper-dim)}
   .notes li::before{content:"↳";color:var(--signal);font-family:var(--mono);flex:none;line-height:1.5}
+  .card .store{margin-top:18px;display:inline-flex;align-items:center;gap:.55em;font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);transition:color .2s}
+  .card .store:hover{color:var(--paper)}
+  .card .store .arr{color:var(--mist-2);transition:transform .2s,color .2s}
+  .card .store:hover .arr{color:var(--signal);transform:translate(2px,-2px)}
 
   /* app roster */
   .roster{display:grid;gap:24px;margin-top:6px}
   .roster-group .meta-row{margin-top:11px}
   .roster-group .chip{color:var(--paper);font-size:.74rem;padding:7px 12px;border-color:var(--line)}
+  /* app roster — detailed list */
+  .app-list{display:grid;gap:1px;margin-top:12px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
+  .app{background:var(--ink);padding:13px 16px;transition:background .2s}
+  .app:hover{background:var(--panel)}
+  .app .an{font-family:var(--display);font-weight:600;color:var(--paper);font-size:1.02rem;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.5em}
+  .app .an .arr{margin-left:auto;font-family:var(--mono);font-size:.74rem;color:var(--mist-2);transition:transform .2s,color .2s}
+  a.app:hover .an{color:var(--signal)}
+  a.app:hover .an .arr{color:var(--signal);transform:translate(2px,-2px)}
+  .app .ad{color:var(--mist);font-size:.9rem;line-height:1.5;margin-top:3px;max-width:64ch}
 
   /* ============================== EXPERIENCE ============================== */
   .timeline{position:relative;display:grid;gap:0;border-left:1px solid var(--line);margin-left:6px}
@@ -309,17 +323,52 @@
       <!-- SECONDARY -->
       <article class="card reveal">
         <div class="top">
-          <h3>Currency Converter</h3>
+          <h3>Currency Converter: Live Rates</h3>
           <span class="pill live"><span class="d"></span>Live · App Store</span>
         </div>
-        <p class="desc">Fast conversion across fiat and crypto with live rates — a small, focused app that doubled as a real growth experiment.</p>
+        <p class="desc">Fast conversion across 160+ world currencies with daily-updated rates — a small, focused travel companion that doubled as a real growth experiment.</p>
         <div class="meta-row">
           <span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">async/await</span><span class="chip">StoreKit</span>
         </div>
         <ul class="notes">
-          <li>Live rates from CoinGecko &amp; Binance.</li>
+          <li>Scan any price tag with the camera, set a base currency, and pin your favourites.</li>
           <li>Full ASO program: 200+ Apple Search Ads keywords and icon A/B tests via custom product pages.</li>
         </ul>
+        <a class="store" href="https://apps.apple.com/us/app/currency-converter-live-rates/id1513956869" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
+      </article>
+
+      <!-- SECONDARY · Voice Memos -->
+      <article class="card reveal">
+        <div class="top">
+          <h3>Voice Memos: AI Audio Recorder</h3>
+          <span class="pill live"><span class="d"></span>Live · App Store</span>
+        </div>
+        <p class="desc">A clean, high-quality voice recorder with playback and in-app trimming — plus one-tap transcription that turns what you said into text.</p>
+        <div class="meta-row">
+          <span class="chip">Swift</span><span class="chip">AVFoundation</span><span class="chip">Speech</span><span class="chip">StoreKit</span>
+        </div>
+        <ul class="notes">
+          <li>Waveform recording with playback and precise trimming.</li>
+          <li>Speech-to-text transcription, with export and sharing.</li>
+        </ul>
+        <a class="store" href="https://apps.apple.com/us/app/voice-memos-ai-audio-recorder/id1589286529" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
+      </article>
+
+      <!-- SECONDARY · Text to Speech -->
+      <article class="card reveal">
+        <div class="top">
+          <h3>Text to Speech: AI Book Reader</h3>
+          <span class="pill live"><span class="d"></span>Live · App Store</span>
+        </div>
+        <p class="desc">Turns any text, document or photo into natural-sounding speech — listen instead of read, whether you're studying, working or on the move.</p>
+        <div class="meta-row">
+          <span class="chip">Swift</span><span class="chip">AVFoundation</span><span class="chip">Vision</span><span class="chip">PDFKit</span><span class="chip">StoreKit</span>
+        </div>
+        <ul class="notes">
+          <li>140+ natural voices across 38 languages, with tunable speed and pitch.</li>
+          <li>Imports from PDF, documents and photos (OCR); highlights spoken text with auto-scroll, and works offline.</li>
+        </ul>
+        <a class="store" href="https://apps.apple.com/us/app/text-to-speech-ai-book-reader/id739280962" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
       </article>
 
       <!-- CAREER ROSTER -->
@@ -327,15 +376,49 @@
         <p class="mono" style="margin:34px 0 20px;color:var(--mist-2)">Highlights from 50+ shipped App Store apps</p>
         <div class="roster">
           <div class="roster-group">
-            <span class="mono" style="color:var(--mist)">ASAP Visuals · 2022–2026</span>
-            <div class="meta-row">
-              <span class="chip">izi AI</span><span class="chip">izi Type</span><span class="chip">PartyCam</span><span class="chip">Edith</span><span class="chip">Templates</span>
+            <span class="mono" style="color:var(--mist)">ASAP Visuals · 2022–2026 · published via ASAP Visuals &amp; MWM</span>
+            <div class="app-list">
+              <a class="app" href="https://apps.apple.com/us/app/ai-chat-bot-assistant-izi/id1667441037" target="_blank" rel="noopener">
+                <div class="an">izi AI <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">AI assistant for chat, image generation and recognition, and quick writing and math help.</div>
+              </a>
+              <a class="app" href="https://apps.apple.com/us/app/typeflow-ai-keyboard-writer/id6475330598" target="_blank" rel="noopener">
+                <div class="an">izi Type <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">AI keyboard (now TypeFlow) that drafts, rewrites and translates text right inside any app.</div>
+              </a>
+              <a class="app" href="https://apps.apple.com/us/app/party-cam-disposable-camera/id6651825891" target="_blank" rel="noopener">
+                <div class="an">PartyCam <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">Disposable-camera app for weddings and parties — shared event albums with a retro film look.</div>
+              </a>
+              <a class="app" href="https://apps.apple.com/us/app/edith-aesthetic-photo-editor/id1477761909" target="_blank" rel="noopener">
+                <div class="an">Edith <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">Aesthetic photo and video editor for polished, on-trend social content.</div>
+              </a>
+              <a class="app" href="https://apps.apple.com/us/app/picmix-photo-collage-maker/id1616180744" target="_blank" rel="noopener">
+                <div class="an">Templates <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">Photo collage maker (PicMIX) with ready-made layouts and templates for social posts.</div>
+              </a>
             </div>
           </div>
           <div class="roster-group">
-            <span class="mono" style="color:var(--mist)">System Technologies · 2018–2022</span>
-            <div class="meta-row">
-              <span class="chip">Drive&amp;Pay</span><span class="chip">Tix</span><span class="chip">Дзякуй</span><span class="chip">Звезда</span>
+            <span class="mono" style="color:var(--mist)">System Technologies · 2018–2022 · fintech &amp; transport for Belarusian clients</span>
+            <div class="app-list">
+              <div class="app">
+                <div class="an">Drive&amp;Pay</div>
+                <div class="ad">Pay for fuel at the pump straight from your car, across the Belarusneft station network.</div>
+              </div>
+              <div class="app">
+                <div class="an">Tix</div>
+                <div class="ad">Contactless fare payment and e-tickets for city public transport.</div>
+              </div>
+              <a class="app" href="https://apps.apple.com/by/app/%D0%B4%D0%B7%D1%8F%D0%BA%D1%83%D0%B9/id1317507397" target="_blank" rel="noopener">
+                <div class="an">Дзякуй <span class="arr" aria-hidden="true">↗</span></div>
+                <div class="ad">Cardless fuel payment at A-100 stations — pay from the car without leaving the pump.</div>
+              </a>
+              <div class="app">
+                <div class="an">Звезда</div>
+                <div class="ad">Loyalty and rewards app — collect and redeem points with a card linked in-app.</div>
+              </div>
             </div>
           </div>
         </div>
