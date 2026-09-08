@@ -91,6 +91,7 @@
   @media(max-width:760px){ .sec-head{grid-template-columns:1fr;gap:16px;margin-bottom:36px} }
 
   .btn{display:inline-flex;align-items:center;gap:.4em;padding:14px 22px;border-radius:8px;font-size:15px;font-weight:500;border:1px solid transparent;white-space:nowrap}
+  .btn .ico{flex:none;margin-left:2px;opacity:.85}
   .btn-primary{background:var(--ink);color:var(--bg)}
   .btn-primary:hover{background:#33302b}
   .btn-ghost{border-color:#cfc9be;color:var(--ink);font-weight:400}
@@ -129,7 +130,7 @@
   /* ============================== HERO ============================== */
   .hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:48px;padding-top:40px;align-items:end}
   .hero-copy{padding-bottom:72px}
-  .hero h1{font-family:var(--serif);font-size:clamp(44px,6vw,72px);line-height:1.02;letter-spacing:-.015em;margin:0 0 28px}
+  .hero h1{font-family:var(--serif);font-size:clamp(38px,6vw,72px);line-height:1.02;letter-spacing:-.015em;margin:0 0 28px}
   .hero h1 em{font-style:italic}
   .hero .lede{font-size:17px;line-height:1.6;color:var(--text);max-width:520px;margin:0 0 36px;text-wrap:pretty}
   .hero .lede b{font-weight:600;color:var(--ink)}
@@ -287,7 +288,7 @@
       <h1>Ten years of iOS.<br><em>Fifty-plus apps.</em></h1>
       <p class="lede">I'm Dzionis — a senior iOS engineer in Warsaw. Over <b>10+ years</b> I've designed and shipped <b>50+ App Store apps</b>, from simple REST clients to geolocation and AR. I've led iOS teams, mentored juniors, and these days I also build and ship my own products.</p>
       <div class="hero-actions">
-        <a href="#work" class="btn btn-primary">See the work</a>
+        <a href="assets/Dzionis_Brek_CV.pdf" class="btn btn-primary" download="Dzionis_Brek_CV.pdf">Download CV <svg class="ico" viewBox="0 0 16 16" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2.5v8"/><path d="M4.75 7.5 8 10.75 11.25 7.5"/><path d="M2.75 13.5h10.5"/></svg></a>
         <a href="#contact" class="btn btn-ghost">Get in touch</a>
       </div>
     </div>
