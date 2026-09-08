@@ -1,14 +1,15 @@
 <!DOCTYPE html>
 <!--
   Dzionis Brek — personal site (static, single file). Content filled from CV/LinkedIn.
+  Design: warm paper palette, Instrument Serif headings, DM Sans body, IBM Plex Mono labels.
   STILL OPTIONAL TO TWEAK:
-    • App roster (#work) now has a one-line description + App Store link per app. Live apps link out
-      (izi AI/Type, PartyCam, Edith, Templates, Дзякуй); delisted ones (Drive&Pay, Tix, Звезда) don't.
+    • App roster (#work) has a one-line description + App Store link per app. Live apps link out;
+      delisted ones (Drive&Pay, Tix, Звезда) don't.
     • Phone number is shown publicly in #contact — remove the tel: link if you'd rather not.
     • Blog: posts are standalone pages in /writing (styles in /assets/blog.css).
       Archive at /writing/ lists every post; add one by copying writing/_TEMPLATE.html
       — full steps in WRITING.md.
-  Deploy: copy the folder (index.html + assets/ + writing/) → GitHub Pages / Vercel / Netlify.
+  Deploy: copy the folder (index.html + assets/ + favicon/ + writing/) → GitHub Pages / Vercel / Netlify.
 -->
 <html lang="en">
 <head>
@@ -16,556 +17,470 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Dzionis Brek — Senior iOS Engineer</title>
 <meta name="description" content="Dzionis Brek — senior iOS engineer in Warsaw. 10+ years, 50+ App Store apps, from REST clients to geolocation and AR. Building and shipping iOS products end to end." />
+<meta property="og:type" content="website" />
+<meta property="og:title" content="Dzionis Brek — Senior iOS Engineer" />
+<meta property="og:description" content="Ten years of iOS. Fifty-plus apps. Senior iOS engineer in Warsaw, building and shipping products end to end." />
+<meta property="og:url" content="https://dzionis.by/" />
+<meta property="og:image" content="https://dzionis.by/favicon/favicon-512.png" />
+<meta name="theme-color" content="#f7f4ee" />
+<link rel="icon" type="image/png" sizes="32x32" href="favicon/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="192x192" href="favicon/favicon-192.png" />
+<link rel="apple-touch-icon" href="favicon/favicon-192.png" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Hanken+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
 <style>
   /* ============================== TOKENS ============================== */
   :root{
-    --ink:#0B0E0D;
-    --panel:#121715;
-    --panel-2:#161D1A;
-    --line:#232C28;
-    --line-soft:#1A211E;
-    --mist:#7E8A84;
-    --mist-2:#586460;
-    --paper:#E9EEEB;
-    --paper-dim:#BFC9C4;
-    --signal:#33D69A;
-    --signal-dim:rgba(51,214,154,.13);
-    --amber:#E6A23C;
+    --bg:#f7f4ee;
+    --ink:#1c1a17;
+    --text:#4a453d;
+    --muted:#5b564e;
+    --dim:#7a7368;
+    --line:#dcd6cb;
+    --card-line:#e6e0d5;
+    --card:#ffffff;
+    --sand:#e8dfd1;
+    --accent:#a3532f;
+    --accent-soft:#e8a887;
 
-    --display:"Space Grotesk",system-ui,sans-serif;
-    --body:"Hanken Grotesk",system-ui,sans-serif;
-    --mono:"JetBrains Mono",ui-monospace,monospace;
+    --dark:#1c1a17;
+    --dark-line:#3d3933;
+    --dark-text:#cfc7b9;
+    --dark-muted:#b8afa1;
+    --dark-bright:#e6dfd3;
 
-    --maxw:1080px;
-    --gutter:clamp(20px,5vw,72px);
+    --serif:"Instrument Serif",Georgia,"Times New Roman",serif;
+    --sans:"DM Sans",system-ui,-apple-system,sans-serif;
+    --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+
+    --maxw:1200px;
+    --gutter:clamp(20px,4vw,40px);
+    --section:clamp(72px,10vw,120px);
   }
 
   /* ============================== RESET ============================== */
   *{box-sizing:border-box;margin:0;padding:0}
   html{scroll-behavior:smooth}
   body{
-    background:var(--ink);
-    color:var(--paper-dim);
-    font-family:var(--body);
-    font-size:clamp(1rem,1rem + .1vw,1.0625rem);
-    line-height:1.62;
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:16px;
+    line-height:1.55;
     -webkit-font-smoothing:antialiased;
     text-rendering:optimizeLegibility;
     overflow-x:hidden;
-    background-image:
-      radial-gradient(circle at 1px 1px, rgba(126,138,132,.05) 1px, transparent 0);
-    background-size:38px 38px;
   }
-  a{color:inherit;text-decoration:none}
-  img,svg{display:block}
-  ::selection{background:var(--signal);color:var(--ink)}
+  a{color:inherit;text-decoration:none;transition:color .2s,border-color .2s,background .2s,transform .2s}
+  img{display:block;max-width:100%}
+  ul{list-style:none}
+  ::selection{background:var(--accent);color:var(--bg)}
+  h1,h2,h3{font-weight:400}
 
-  /* ============================== TYPE HELPERS ============================== */
-  .mono{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist)}
-  .eyebrow{font-family:var(--mono);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--signal);display:inline-flex;align-items:center;gap:.6em}
-  .eyebrow::before{content:"//";color:var(--mist-2)}
-  h1,h2,h3{font-family:var(--display);color:var(--paper);font-weight:600;line-height:1.04;letter-spacing:-.02em}
-
-  /* ============================== LAYOUT ============================== */
+  /* ============================== HELPERS ============================== */
   .wrap{max-width:var(--maxw);margin:0 auto;padding-inline:var(--gutter)}
-  section{padding-block:clamp(72px,11vw,140px);position:relative}
-  .divider{border-top:1px solid var(--line-soft)}
+  .eyebrow{font-family:var(--mono);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--accent);margin-bottom:18px}
+  .label{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  .serif{font-family:var(--serif)}
+  section{padding-top:var(--section);scroll-margin-top:24px}
+
+  .sec-head{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:40px;align-items:end;margin-bottom:48px}
+  .sec-head h2{font-family:var(--serif);font-size:clamp(36px,4.5vw,56px);line-height:1.02;letter-spacing:-.02em;text-wrap:pretty}
+  .sec-head p{font-size:17px;line-height:1.55;color:var(--text)}
+  @media(max-width:760px){ .sec-head{grid-template-columns:1fr;gap:16px;margin-bottom:36px} }
+
+  .btn{display:inline-flex;align-items:center;gap:.4em;padding:14px 22px;border-radius:8px;font-size:15px;font-weight:500;border:1px solid transparent;white-space:nowrap}
+  .btn-primary{background:var(--ink);color:var(--bg)}
+  .btn-primary:hover{background:#33302b}
+  .btn-ghost{border-color:#cfc9be;color:var(--ink);font-weight:400}
+  .btn-ghost:hover{border-color:var(--ink)}
+  .btn-light{background:var(--bg);color:var(--ink)}
+  .btn-light:hover{background:#fff}
+  .btn-outline{border-color:var(--dark-line);color:var(--bg);font-weight:400}
+  .btn-outline:hover{border-color:var(--dark-muted)}
+
+  .card{background:var(--card);border:1px solid var(--card-line);border-radius:12px;padding:22px 24px;transition:border-color .2s,transform .2s,box-shadow .2s}
+  a.card:hover{border-color:#cfc9be;transform:translateY(-2px);box-shadow:0 10px 30px -18px rgba(28,26,23,.35)}
+  .card .t{font-weight:600;font-size:16px;margin-bottom:6px}
+  .card .d{font-size:14px;line-height:1.5;color:var(--muted)}
+  .card .m{font-family:var(--mono);font-size:12px;color:var(--dim)}
+  a.card .t::after{content:" ↗";color:var(--dim);font-weight:400}
+  a.card:hover .t{color:var(--accent)}
+
+  .grid-3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+  .grid-4{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+  @media(max-width:480px){ .grid-3,.grid-4{grid-template-columns:1fr} }
 
   /* ============================== NAV ============================== */
-  header.nav{
-    position:sticky;top:0;z-index:50;
-    backdrop-filter:blur(10px);
-    background:color-mix(in srgb, var(--ink) 78%, transparent);
-    border-bottom:1px solid var(--line-soft);
+  .nav{display:flex;justify-content:space-between;align-items:center;padding:26px 0;gap:16px 24px;flex-wrap:wrap;font-size:14px}
+  .brand{font-family:var(--serif);font-size:22px;color:var(--ink);white-space:nowrap}
+  .nav-links{display:flex;gap:clamp(14px,2.4vw,28px);flex-wrap:wrap}
+  .nav-links a{color:var(--muted)}
+  .nav-links a:hover,.nav-links a.active{color:var(--accent)}
+  .nav-cta{padding:9px 16px;border:1px solid var(--ink);border-radius:999px;font-size:13px}
+  .nav-cta:hover{background:var(--ink);color:var(--bg)}
+  @media(max-width:640px){
+    .nav{padding:20px 0}
+    .nav-cta{display:none}
+    .nav-links{width:100%;order:3;gap:14px 18px;font-size:13px}
   }
-  .nav-inner{max-width:var(--maxw);margin:0 auto;padding:14px var(--gutter);display:flex;align-items:center;justify-content:space-between;gap:16px}
-  .brand{font-family:var(--mono);font-size:.82rem;letter-spacing:.04em;color:var(--paper);display:inline-flex;align-items:center;gap:.6em;white-space:nowrap}
-  .brand .dot{width:7px;height:7px;border-radius:50%;background:var(--signal);box-shadow:0 0 10px var(--signal)}
-  .nav-links{display:flex;gap:clamp(14px,2.4vw,30px);align-items:center}
-  .nav-links a{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);position:relative;padding-block:6px;transition:color .2s}
-  .nav-links a:hover,.nav-links a.active{color:var(--paper)}
-  .nav-links a.active::after{content:"";position:absolute;left:0;right:0;bottom:0;height:1px;background:var(--signal)}
-  @media(max-width:640px){ .nav-links a:nth-child(2),.nav-links a:nth-child(4),.nav-links a:nth-child(5){display:none} }
 
   /* ============================== HERO ============================== */
-  .hero{padding-top:clamp(54px,10vw,104px);padding-bottom:0}
-  .hero h1{font-size:clamp(2.7rem,8.6vw,6rem);font-weight:700;margin:.34em 0 .28em}
-  .hero h1 .tail{color:var(--signal)}
-  .lede{max-width:52ch;font-size:clamp(1.05rem,1.4vw,1.22rem);color:var(--paper-dim)}
-  .lede b{color:var(--paper);font-weight:600}
+  .hero{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:48px;padding-top:40px;align-items:end}
+  .hero-copy{padding-bottom:72px}
+  .hero h1{font-family:var(--serif);font-size:clamp(52px,7vw,84px);line-height:.98;letter-spacing:-.02em;margin:0 0 28px}
+  .hero .lede{font-size:19px;line-height:1.5;color:var(--text);max-width:520px;margin:0 0 36px;text-wrap:pretty}
+  .hero .lede b{font-weight:600;color:var(--ink)}
+  .hero-actions{display:flex;gap:12px;flex-wrap:wrap}
+  .hero-photo{position:relative;height:560px;display:flex;align-items:flex-end;justify-content:center;min-width:0;overflow:hidden}
+  .hero-photo .panel{position:absolute;inset:auto 0 0 0;height:420px;background:var(--sand);border-radius:24px 24px 0 0}
+  .hero-photo img{position:relative;height:560px;max-width:none;width:auto;object-fit:contain;object-position:bottom;transform:translateX(12%)}
+  @media(max-width:860px){
+    .hero{grid-template-columns:1fr;gap:8px;padding-top:24px}
+    .hero-copy{padding-bottom:40px}
+    .hero .lede{font-size:17px}
+    .hero-photo{height:420px}
+    .hero-photo .panel{height:320px}
+    .hero-photo img{height:420px;transform:translateX(12%)}
+  }
 
-  .readouts{display:flex;flex-wrap:wrap;gap:1px;margin-top:clamp(34px,5vw,52px);background:var(--line-soft);border:1px solid var(--line-soft);border-radius:2px;overflow:hidden}
-  .readout{background:var(--ink);padding:16px 22px;flex:1 1 150px;min-width:140px}
-  .readout .k{font-family:var(--mono);font-size:.66rem;letter-spacing:.16em;text-transform:uppercase;color:var(--mist-2)}
-  .readout .v{font-family:var(--display);font-weight:600;color:var(--paper);font-size:1.18rem;margin-top:6px;letter-spacing:-.01em}
-  .readout .v small{font-family:var(--mono);font-weight:500;font-size:.72rem;color:var(--mist);letter-spacing:.04em}
-
-  /* focus areas */
-  .focus{margin-top:clamp(44px,7vw,80px);display:grid;grid-template-columns:repeat(6,1fr);gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:2px;overflow:hidden}
-  .foc{background:var(--ink);padding:15px 16px;transition:background .25s}
-  .foc:hover{background:var(--panel)}
-  .foc-k{font-family:var(--mono);font-size:.64rem;letter-spacing:.13em;text-transform:uppercase;color:var(--paper);display:flex;align-items:center;gap:.5em}
-  .foc-k::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--signal);flex:none;box-shadow:0 0 7px var(--signal);opacity:.85}
-  .foc-v{margin-top:10px;font-family:var(--mono);font-size:.7rem;line-height:1.5;color:var(--mist);letter-spacing:.01em}
-  @media(max-width:920px){ .focus{grid-template-columns:repeat(3,1fr)} }
-  @media(max-width:520px){ .focus{grid-template-columns:repeat(2,1fr)} }
-  .scroll-cue{margin-top:30px;display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mist-2)}
-  .scroll-cue .bar{width:34px;height:1px;background:var(--mist-2);position:relative;overflow:hidden}
-  .scroll-cue .bar::after{content:"";position:absolute;inset:0;background:var(--signal);transform:translateX(-100%);animation:slide 2.6s ease-in-out infinite}
-  @keyframes slide{0%{transform:translateX(-100%)}55%{transform:translateX(0)}100%{transform:translateX(100%)}}
-
-  /* ============================== SECTION HEAD ============================== */
-  .sec-head{display:flex;flex-direction:column;gap:14px;margin-bottom:clamp(38px,5vw,56px)}
-  .sec-head h2{font-size:clamp(1.7rem,3.4vw,2.5rem)}
-  .sec-head p{max-width:58ch;color:var(--mist)}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .stat{padding:26px 28px;border-right:1px solid var(--line)}
+  .stat:first-child{padding-left:0}
+  .stat:last-child{border-right:0;padding-right:0}
+  .stat .v{font-family:var(--serif);font-size:40px;line-height:1.1}
+  .stat .k{font-size:13px;color:var(--dim)}
+  @media(max-width:760px){
+    .stats{grid-template-columns:1fr 1fr}
+    .stat{padding:20px 20px}
+    .stat:nth-child(odd){padding-left:0}
+    .stat:nth-child(even){border-right:0;padding-right:0}
+    .stat:nth-child(-n+2){border-bottom:1px solid var(--line)}
+    .stat .v{font-size:32px}
+  }
 
   /* ============================== WORK ============================== */
-  .work-grid{display:grid;gap:18px}
-  .card{
-    position:relative;background:var(--panel);border:1px solid var(--line);border-radius:4px;
-    padding:clamp(22px,3vw,32px);transition:border-color .25s, transform .25s, background .25s;
+  .feature{background:var(--dark);color:var(--bg);border-radius:20px;padding:clamp(28px,4vw,48px);display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,360px);gap:48px;margin-bottom:16px}
+  .feature .status{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--dark-muted);margin-bottom:20px}
+  .feature .status .now{color:var(--accent-soft)}
+  .feature h3{font-family:var(--serif);font-size:clamp(34px,4vw,44px);margin:0 0 14px;letter-spacing:-.01em;line-height:1.05}
+  .feature .desc{font-size:17px;line-height:1.55;color:var(--dark-text);margin:0 0 24px;max-width:520px}
+  .feature .notes{margin:0 0 28px;padding-left:18px;font-size:15px;line-height:1.6;color:var(--dark-bright);list-style:disc}
+  .feature .notes li+li{margin-top:4px}
+  .feature .actions{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:24px}
+  .feature .actions .btn{padding:12px 20px}
+  .tags{display:flex;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px}
+  .tags span{padding:5px 10px;border:1px solid var(--dark-line);border-radius:999px}
+  .feature .shot{display:flex;align-items:center;min-width:0}
+  .feature .shot img{width:100%;height:auto;border-radius:12px}
+  @media(max-width:800px){
+    .feature{grid-template-columns:1fr;gap:28px}
+    .feature .shot{max-width:420px}
   }
-  .card:hover{border-color:color-mix(in srgb,var(--signal) 55%,var(--line));transform:translateY(-3px);background:var(--panel-2)}
-  .card .top{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
-  .card h3{font-size:clamp(1.3rem,2.4vw,1.7rem)}
-  .card.lead h3{font-size:clamp(1.7rem,3.4vw,2.3rem)}
-  .card .desc{margin-top:12px;color:var(--paper-dim);max-width:62ch}
-  .pill{font-family:var(--mono);font-size:.62rem;letter-spacing:.13em;text-transform:uppercase;display:inline-flex;align-items:center;gap:.55em;color:var(--mist);border:1px solid var(--line);border-radius:99px;padding:5px 11px;white-space:nowrap}
-  .pill .d{width:7px;height:7px;border-radius:50%}
-  .pill.live .d{background:var(--signal);box-shadow:0 0 8px var(--signal)}
-  .pill.beta .d{background:var(--amber);box-shadow:0 0 8px var(--amber)}
-  .pill.ship .d{background:var(--mist-2)}
-  .meta-row{margin-top:20px;display:flex;flex-wrap:wrap;gap:8px}
-  .chip{font-family:var(--mono);font-size:.68rem;letter-spacing:.04em;color:var(--paper-dim);background:var(--ink);border:1px solid var(--line-soft);border-radius:3px;padding:5px 9px}
-  .notes{margin-top:20px;display:grid;gap:9px;border-top:1px solid var(--line-soft);padding-top:18px}
-  .notes li{list-style:none;display:flex;gap:12px;align-items:flex-start;font-size:.95rem;color:var(--paper-dim)}
-  .notes li::before{content:"↳";color:var(--signal);font-family:var(--mono);flex:none;line-height:1.5}
-  .card .store{margin-top:18px;display:inline-flex;align-items:center;gap:.55em;font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);transition:color .2s}
-  .card .store:hover{color:var(--paper)}
-  .card .store .arr{color:var(--mist-2);transition:transform .2s,color .2s}
-  .card .store:hover .arr{color:var(--signal);transform:translate(2px,-2px)}
 
-  /* app roster */
-  .roster{display:grid;gap:24px;margin-top:6px}
-  .roster-group .meta-row{margin-top:11px}
-  .roster-group .chip{color:var(--paper);font-size:.74rem;padding:7px 12px;border-color:var(--line)}
-  /* app roster — detailed list */
-  .app-list{display:grid;gap:1px;margin-top:12px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
-  .app{background:var(--ink);padding:13px 16px;transition:background .2s}
-  .app:hover{background:var(--panel)}
-  .app .an{font-family:var(--display);font-weight:600;color:var(--paper);font-size:1.02rem;letter-spacing:-.01em;display:flex;align-items:baseline;gap:.5em}
-  .app .an .arr{margin-left:auto;font-family:var(--mono);font-size:.74rem;color:var(--mist-2);transition:transform .2s,color .2s}
-  a.app:hover .an{color:var(--signal)}
-  a.app:hover .an .arr{color:var(--signal);transform:translate(2px,-2px)}
-  .app .ad{color:var(--mist);font-size:.9rem;line-height:1.5;margin-top:3px;max-width:64ch}
+  .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+  .app-card{background:var(--card);border:1px solid var(--card-line);border-radius:20px;padding:clamp(24px,3vw,32px);display:flex;flex-direction:column}
+  .app-card .m{margin-bottom:16px}
+  .app-card h3{font-family:var(--serif);font-size:30px;margin:0 0 12px;line-height:1.1}
+  .app-card p{font-size:15px;line-height:1.55;color:var(--text);margin:0 0 18px}
+  .app-card ul{margin:0 0 22px;padding-left:18px;font-size:14px;line-height:1.6;color:var(--text);list-style:disc}
+  .app-card .foot{margin-top:auto;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .app-card .foot .stack{font-family:var(--mono);font-size:11px;color:var(--dim)}
+  .store{font-size:14px;font-weight:500;color:var(--accent);white-space:nowrap}
+  .store:hover{color:var(--ink)}
+  @media(max-width:480px){ .apps{grid-template-columns:1fr} }
 
-  /* ============================== EXPERIENCE ============================== */
-  .timeline{position:relative;display:grid;gap:0;border-left:1px solid var(--line);margin-left:6px}
-  .tl{position:relative;padding:0 0 clamp(30px,4.5vw,44px) clamp(26px,4vw,40px)}
-  .tl:last-child{padding-bottom:0}
-  .tl::before{content:"";position:absolute;left:-5px;top:6px;width:9px;height:9px;border-radius:50%;background:var(--ink);border:2px solid var(--signal)}
-  .tl.past::before{border-color:var(--mist-2)}
-  .tl .when{font-family:var(--mono);font-size:.68rem;letter-spacing:.13em;text-transform:uppercase;color:var(--signal)}
-  .tl.past .when{color:var(--mist)}
-  .tl h3{font-size:1.22rem;margin:9px 0 4px}
-  .tl .org{font-family:var(--mono);font-size:.76rem;color:var(--mist);letter-spacing:.02em}
-  .tl p{margin-top:11px;color:var(--paper-dim);max-width:62ch;font-size:.97rem}
-  .tl .meta-row{margin-top:14px}
+  .roster{margin-top:72px}
+  .roster h3{font-family:var(--serif);font-size:28px;margin-bottom:8px}
+  .roster .group{font-family:var(--mono);font-size:12px;color:var(--dim);margin:28px 0 14px}
+  .roster .group+.grid-4{margin-bottom:0}
+  .roster .note{font-size:15px;line-height:1.55;color:var(--muted);margin:24px 0 0;max-width:720px}
 
-  /* ============================== SKILLS ============================== */
-  .skills-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(268px,1fr));gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
-  .sk{background:var(--ink);padding:20px 22px;transition:background .25s}
-  .sk:hover{background:var(--panel)}
-  .sk-label{font-family:var(--mono);font-size:.66rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mist);display:flex;align-items:center;gap:.6em}
-  .sk-label::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--signal);flex:none;box-shadow:0 0 7px var(--signal);opacity:.85}
-  .sk-items{margin-top:11px;color:var(--paper-dim);font-size:.92rem;line-height:1.55}
+  /* ============================== DOMAINS ============================== */
+  .domains{padding-top:72px}
 
-  /* ============================== WRITING ============================== */
-  .posts{display:grid;gap:0;border-top:1px solid var(--line-soft)}
-  .post{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 28px;align-items:baseline;
-    padding:clamp(20px,3vw,26px) 0;border-bottom:1px solid var(--line-soft);transition:padding-left .25s}
-  .post:hover{padding-left:14px}
-  .post .ptitle{font-family:var(--display);font-weight:500;color:var(--paper);font-size:clamp(1.1rem,2vw,1.32rem);letter-spacing:-.01em;transition:color .2s}
-  .post:hover .ptitle{color:var(--signal)}
-  .post .dek{grid-column:1/2;color:var(--mist);font-size:.95rem;margin-top:4px;max-width:62ch}
-  .post .pmeta{font-family:var(--mono);font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist-2);white-space:nowrap;text-align:right}
-  @media(max-width:560px){ .post{grid-template-columns:1fr} .post .pmeta{text-align:left} }
-  .writing-all{margin-top:clamp(26px,4vw,34px);display:inline-flex;align-items:center;gap:10px;font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mist);border:1px solid var(--line);border-radius:99px;padding:10px 18px;transition:border-color .2s,color .2s}
-  .writing-all:hover{color:var(--paper);border-color:color-mix(in srgb,var(--signal) 50%,var(--line))}
-  .writing-all span{transition:transform .2s,color .2s}
-  .writing-all:hover span{transform:translateX(3px);color:var(--signal)}
+  /* ============================== EXPERIENCE / WRITING ROWS ============================== */
+  .rows{border-top:1px solid var(--line)}
+  .row{display:grid;grid-template-columns:200px minmax(0,1fr);gap:32px;padding:28px 0;border-bottom:1px solid var(--line)}
+  .row .when{font-family:var(--mono);font-size:13px;color:var(--dim);padding-top:4px}
+  .row .head{display:flex;justify-content:space-between;gap:8px 16px;flex-wrap:wrap;align-items:baseline}
+  .row h3{font-size:22px;font-weight:600;font-family:var(--sans)}
+  .row .org{font-size:14px;color:var(--dim)}
+  .row p{font-size:15px;line-height:1.55;color:var(--text);margin:10px 0 0;max-width:720px}
+  .row .stack{font-family:var(--mono);font-size:12px;color:var(--accent);margin-top:12px}
+  @media(max-width:700px){
+    .row{grid-template-columns:1fr;gap:8px;padding:22px 0}
+    .row .when{padding-top:0}
+  }
+
+  a.row{transition:background .2s,padding .2s}
+  a.row .ptitle{font-family:var(--serif);font-size:28px;line-height:1.15;margin-bottom:8px;transition:color .2s}
+  a.row .dek{font-size:15px;color:var(--muted)}
+  a.row .pmeta{font-family:var(--mono);font-size:13px;color:var(--dim);padding-top:6px}
+  a.row:hover .ptitle{color:var(--accent)}
+  @media(max-width:700px){ a.row .ptitle{font-size:24px} }
+  .more{display:inline-block;margin-top:24px;font-size:15px;font-weight:500;color:var(--accent)}
+  .more:hover{color:var(--ink)}
 
   /* ============================== ABOUT ============================== */
-  .about-grid{display:grid;grid-template-columns:1.4fr .9fr;gap:clamp(28px,5vw,64px);align-items:start}
-  @media(max-width:760px){ .about-grid{grid-template-columns:1fr} }
-  .about p{margin-bottom:1.1em;color:var(--paper-dim)}
-  .about p b{color:var(--paper);font-weight:600}
-  .facts{display:grid;gap:1px;background:var(--line-soft);border:1px solid var(--line-soft);border-radius:3px;overflow:hidden}
-  .fact{background:var(--ink);padding:15px 18px}
-  .fact .k{font-family:var(--mono);font-size:.64rem;letter-spacing:.15em;text-transform:uppercase;color:var(--mist-2)}
-  .fact .v{color:var(--paper);font-size:.95rem;margin-top:5px}
+  .about{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:56px;align-items:start}
+  .about-copy{font-family:var(--serif);font-size:clamp(24px,2.6vw,32px);line-height:1.3;color:var(--ink)}
+  .about-copy p+p{margin-top:24px}
+  .facts{background:var(--sand);border-radius:20px;padding:32px;font-size:15px;display:grid;grid-template-columns:auto minmax(0,1fr);gap:14px 24px;align-content:start}
+  .facts .k{color:var(--dim)}
+  @media(max-width:800px){ .about{grid-template-columns:1fr;gap:32px} .facts{padding:24px} }
 
   /* ============================== CONTACT ============================== */
-  .contact{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:clamp(30px,5vw,56px)}
-  .contact h2{font-size:clamp(1.9rem,4.5vw,3rem);max-width:16ch}
-  .contact .lede{margin-top:16px;color:var(--mist);max-width:52ch}
-  .links{margin-top:clamp(26px,4vw,38px);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden}
-  .link{background:var(--panel);padding:18px 20px;display:flex;align-items:center;justify-content:space-between;gap:10px;transition:background .2s,color .2s}
-  .link:hover{background:var(--panel-2)}
-  .link .lbl{font-family:var(--mono);font-size:.74rem;letter-spacing:.08em;text-transform:uppercase;color:var(--paper)}
-  .link .sub{font-family:var(--mono);font-size:.64rem;color:var(--mist);margin-top:4px;letter-spacing:.02em;text-transform:none}
-  .link .arr{color:var(--mist);transition:transform .2s,color .2s;font-family:var(--mono)}
-  .link:hover .arr{transform:translate(2px,-2px);color:var(--signal)}
+  .contact{background:var(--dark);color:var(--bg);border-radius:24px;padding:clamp(32px,5vw,64px) clamp(24px,4.5vw,56px);display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,420px);gap:48px;align-items:center}
+  .contact .eyebrow{color:var(--accent-soft)}
+  .contact h2{font-family:var(--serif);font-size:clamp(36px,4.5vw,56px);line-height:1.02;letter-spacing:-.02em;margin:0 0 18px}
+  .contact p{font-size:17px;line-height:1.55;color:var(--dark-text);max-width:480px}
+  .links{display:grid;gap:1px;background:var(--dark-line);border:1px solid var(--dark-line);border-radius:14px;overflow:hidden}
+  .link{display:flex;justify-content:space-between;gap:16px;padding:18px 22px;background:var(--dark);color:var(--bg);font-size:15px;flex-wrap:wrap}
+  .link:hover{background:#2a2723}
+  .link .k{color:var(--dark-muted)}
+  .link .v{text-align:right}
+  @media(max-width:800px){ .contact{grid-template-columns:1fr;gap:32px} }
+  @media(max-width:420px){ .link{padding:16px 18px;font-size:14px} .link .v{text-align:left;word-break:break-all} }
 
   /* ============================== FOOTER ============================== */
-  footer{border-top:1px solid var(--line-soft);padding:30px var(--gutter)}
-  .foot-inner{max-width:var(--maxw);margin:0 auto;display:flex;flex-wrap:wrap;gap:14px;justify-content:space-between;align-items:center}
-  .foot-inner span{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist-2)}
-  .foot-inner a{font-family:var(--mono);font-size:.68rem;letter-spacing:.1em;text-transform:uppercase;color:var(--mist);transition:color .2s}
-  .foot-inner a:hover{color:var(--signal)}
+  footer{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:40px 0 48px;font-size:13px;color:var(--dim)}
+  footer a{color:var(--dim)}
+  footer a:hover{color:var(--accent)}
 
   /* ============================== MOTION / A11Y ============================== */
-  .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s ease}
+  .reveal{opacity:0;transform:translateY(14px);transition:opacity .6s ease,transform .6s ease}
   .reveal.in{opacity:1;transform:none}
-  :focus-visible{outline:2px solid var(--signal);outline-offset:3px;border-radius:2px}
+  :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
   @media(prefers-reduced-motion:reduce){
     html{scroll-behavior:auto}
     .reveal{opacity:1;transform:none;transition:none}
-    .scroll-cue .bar::after{animation:none;transform:translateX(0)}
+    a{transition:none}
   }
 </style>
 </head>
 <body>
 
+<div class="wrap" id="top">
+
 <header class="nav">
-  <div class="nav-inner">
-    <a href="#top" class="brand"><span class="dot"></span>Dzionis&nbsp;Brek</a>
-    <nav class="nav-links" aria-label="Sections">
-      <a href="#work">Work</a>
-      <a href="#experience">Experience</a>
-      <a href="#skills">Skills</a>
-      <a href="#writing">Writing</a>
-      <a href="#about">About</a>
-      <a href="#contact">Contact</a>
-    </nav>
-  </div>
+  <a href="#top" class="brand">Dzionis Brek</a>
+  <nav class="nav-links" aria-label="Sections">
+    <a href="#work">Work</a>
+    <a href="#experience">Experience</a>
+    <a href="#skills">Skills</a>
+    <a href="#writing">Writing</a>
+    <a href="#about">About</a>
+    <a href="#contact">Contact</a>
+  </nav>
+  <a href="mailto:bartwader@gmail.com" class="nav-cta">Email me</a>
 </header>
 
-<main id="top">
+<main>
 
   <!-- ================= HERO ================= -->
-  <section class="hero wrap">
-    <span class="eyebrow">Senior iOS Engineer · Warsaw, PL</span>
-    <h1>Ten years of iOS.<br>Fifty-plus <span class="tail">apps.</span></h1>
-    <p class="lede">I'm Dzionis — a senior iOS engineer in Warsaw. Over <b>10+ years</b> I've designed and shipped <b>50+ App Store apps</b>, from simple REST clients to geolocation and AR. I've led iOS teams, mentored juniors, and these days I also build and ship my own products.</p>
-
-    <div class="readouts" role="list" aria-label="Quick facts">
-      <div class="readout" role="listitem"><div class="k">iOS experience</div><div class="v">10+&nbsp;<small>yrs</small></div></div>
-      <div class="readout" role="listitem"><div class="k">In software</div><div class="v">15+&nbsp;<small>yrs</small></div></div>
-      <div class="readout" role="listitem"><div class="k">Shipped</div><div class="v">50+&nbsp;<small>apps</small></div></div>
-      <div class="readout" role="listitem"><div class="k">Based</div><div class="v">Warsaw, PL</div></div>
-    </div>
-
-    <!-- FOCUS AREAS -->
-    <div class="focus" role="list" aria-label="Core focus areas">
-      <div class="foc" role="listitem">
-        <div class="foc-k">Fintech</div>
-        <div class="foc-v">StoreKit 2 · live rates · in-app purchases</div>
-      </div>
-      <div class="foc" role="listitem">
-        <div class="foc-k">Health &amp; Fitness</div>
-        <div class="foc-v">HealthKit · WorkoutKit · Core Motion</div>
-      </div>
-      <div class="foc" role="listitem">
-        <div class="foc-k">IoT</div>
-        <div class="foc-v">Core Bluetooth · iBeacon · Core Location</div>
-      </div>
-      <div class="foc" role="listitem">
-        <div class="foc-k">Entertainment</div>
-        <div class="foc-v">AVFoundation · audio · playback</div>
-      </div>
-      <div class="foc" role="listitem">
-        <div class="foc-k">Photo &amp; Video</div>
-        <div class="foc-v">AVCapture · Vision · Core Image</div>
-      </div>
-      <div class="foc" role="listitem">
-        <div class="foc-k">AR</div>
-        <div class="foc-v">ARKit · RealityKit · SceneKit</div>
+  <div class="hero">
+    <div class="hero-copy">
+      <div class="eyebrow" style="margin-bottom:22px">Senior iOS Engineer · Warsaw, PL</div>
+      <h1>Ten years of iOS.<br>Fifty-plus apps.</h1>
+      <p class="lede">I'm Dzionis — a senior iOS engineer in Warsaw. Over <b>10+ years</b> I've designed and shipped <b>50+ App Store apps</b>, from simple REST clients to geolocation and AR. I've led iOS teams, mentored juniors, and these days I also build and ship my own products.</p>
+      <div class="hero-actions">
+        <a href="#work" class="btn btn-primary">See the work</a>
+        <a href="#contact" class="btn btn-ghost">Get in touch</a>
       </div>
     </div>
+    <div class="hero-photo" aria-hidden="false">
+      <div class="panel"></div>
+      <img src="assets/photo.webp" alt="Dzionis Brek" width="1108" height="1200" fetchpriority="high" />
+    </div>
+  </div>
 
-    <div class="scroll-cue"><span class="bar"></span>scroll</div>
-  </section>
+  <div class="stats" role="list" aria-label="Quick facts">
+    <div class="stat" role="listitem"><div class="v">10+ yrs</div><div class="k">iOS experience</div></div>
+    <div class="stat" role="listitem"><div class="v">15+ yrs</div><div class="k">In software</div></div>
+    <div class="stat" role="listitem"><div class="v">50+ apps</div><div class="k">Shipped</div></div>
+    <div class="stat" role="listitem"><div class="v">Warsaw, PL</div><div class="k">Based</div></div>
+  </div>
 
   <!-- ================= WORK ================= -->
-  <section id="work" class="wrap divider">
+  <section id="work">
+    <div class="eyebrow">Work</div>
     <div class="sec-head reveal">
-      <span class="eyebrow">Work</span>
       <h2>What I'm building, and what I've shipped.</h2>
       <p>End-to-end iOS — from the first Xcode project to the App Store listing. Here's what I'm working on now, plus highlights from a decade of releases.</p>
     </div>
 
-    <div class="work-grid">
-
-      <p class="mono reveal" style="margin:2px 0 -2px;color:var(--mist-2)">Now — building solo</p>
-
-      <!-- FEATURED -->
-      <article class="card lead reveal">
-        <div class="top">
-          <h3>iRunning</h3>
-          <span class="pill beta"><span class="d"></span>Beta · TestFlight</span>
-        </div>
+    <!-- FEATURED -->
+    <article class="feature reveal">
+      <div>
+        <div class="status"><span class="now">Now — building solo</span><span>·</span><span>Live · App Store</span></div>
+        <h3>iRunning</h3>
         <p class="desc">Interval running for Apple Watch. Build a workout, run it from your wrist, and review the route afterward. Watch-first, with no subscription wall.</p>
-        <div class="meta-row">
-          <span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">WorkoutKit</span><span class="chip">HealthKit</span><span class="chip">WatchConnectivity</span><span class="chip">MapKit</span>
-        </div>
         <ul class="notes">
           <li>GPS route smoothing with a Kalman filter and Douglas–Peucker simplification, so wrist traces stay clean.</li>
           <li>Real-time heart rate streamed from the watch to the phone during a live session.</li>
           <li>One-tap Strava export over OAuth 2.0.</li>
         </ul>
-      </article>
+        <div class="actions">
+          <a href="https://irunning.app" target="_blank" rel="noopener" class="btn btn-light">irunning.app ↗</a>
+          <a href="https://apps.apple.com/us/app/id6770997508?ct=website&amp;mt=8" target="_blank" rel="noopener" class="btn btn-outline">View on App Store ↗</a>
+        </div>
+        <div class="tags"><span>Swift</span><span>SwiftUI</span><span>WorkoutKit</span><span>HealthKit</span><span>WatchConnectivity</span><span>MapKit</span></div>
+      </div>
+      <a href="https://irunning.app" target="_blank" rel="noopener" class="shot"><img src="assets/irunning.webp" alt="iRunning — guided intervals, 20+ plans, Apple Watch" width="1200" height="945" loading="lazy" /></a>
+    </article>
 
-      <!-- SECONDARY -->
-      <article class="card reveal">
-        <div class="top">
-          <h3>Currency Converter: Live Rates</h3>
-          <span class="pill live"><span class="d"></span>Live · App Store</span>
-        </div>
-        <p class="desc">Fast conversion across 160+ world currencies with daily-updated rates — a small, focused travel companion that doubled as a real growth experiment.</p>
-        <div class="meta-row">
-          <span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">async/await</span><span class="chip">StoreKit</span>
-        </div>
-        <ul class="notes">
+    <div class="apps">
+      <article class="app-card reveal">
+        <div class="m label">Live · App Store</div>
+        <h3>Currency Converter: Live Rates</h3>
+        <p>Fast conversion across 160+ world currencies with daily-updated rates — a small, focused travel companion that doubled as a real growth experiment.</p>
+        <ul>
           <li>Scan any price tag with the camera, set a base currency, and pin your favourites.</li>
           <li>Full ASO program: 200+ Apple Search Ads keywords and icon A/B tests via custom product pages.</li>
         </ul>
-        <a class="store" href="https://apps.apple.com/us/app/currency-converter-live-rates/id1513956869" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
+        <div class="foot"><div class="stack">Swift · SwiftUI · async/await · StoreKit</div><a class="store" href="https://apps.apple.com/us/app/currency-converter-live-rates/id1513956869" target="_blank" rel="noopener">View on App Store ↗</a></div>
       </article>
 
-      <!-- SECONDARY · Voice Memos -->
-      <article class="card reveal">
-        <div class="top">
-          <h3>Voice Memos: AI Audio Recorder</h3>
-          <span class="pill live"><span class="d"></span>Live · App Store</span>
-        </div>
-        <p class="desc">A clean, high-quality voice recorder with playback and in-app trimming — plus one-tap transcription that turns what you said into text.</p>
-        <div class="meta-row">
-          <span class="chip">Swift</span><span class="chip">AVFoundation</span><span class="chip">Speech</span><span class="chip">StoreKit</span>
-        </div>
-        <ul class="notes">
-          <li>Waveform recording with playback and precise trimming.</li>
-          <li>Speech-to-text transcription, with export and sharing.</li>
-        </ul>
-        <a class="store" href="https://apps.apple.com/us/app/voice-memos-ai-audio-recorder/id1589286529" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
-      </article>
-
-      <!-- SECONDARY · Text to Speech -->
-      <article class="card reveal">
-        <div class="top">
-          <h3>Text to Speech: AI Book Reader</h3>
-          <span class="pill live"><span class="d"></span>Live · App Store</span>
-        </div>
-        <p class="desc">Turns any text, document or photo into natural-sounding speech — listen instead of read, whether you're studying, working or on the move.</p>
-        <div class="meta-row">
-          <span class="chip">Swift</span><span class="chip">AVFoundation</span><span class="chip">Vision</span><span class="chip">PDFKit</span><span class="chip">StoreKit</span>
-        </div>
-        <ul class="notes">
+      <article class="app-card reveal">
+        <div class="m label">Live · App Store</div>
+        <h3>Text to Speech: AI Book Reader</h3>
+        <p>Turns any text, document or photo into natural-sounding speech — listen instead of read, whether you're studying, working or on the move.</p>
+        <ul>
           <li>140+ natural voices across 38 languages, with tunable speed and pitch.</li>
           <li>Imports from PDF, documents and photos (OCR); highlights spoken text with auto-scroll, and works offline.</li>
         </ul>
-        <a class="store" href="https://apps.apple.com/us/app/text-to-speech-ai-book-reader/id739280962" target="_blank" rel="noopener">View on App Store <span class="arr" aria-hidden="true">↗</span></a>
+        <div class="foot"><div class="stack">Swift · AVFoundation · Vision · PDFKit</div><a class="store" href="https://apps.apple.com/us/app/text-to-speech-ai-book-reader/id739280962" target="_blank" rel="noopener">View on App Store ↗</a></div>
       </article>
+    </div>
 
-      <!-- CAREER ROSTER -->
-      <div class="reveal">
-        <p class="mono" style="margin:34px 0 20px;color:var(--mist-2)">Highlights from 50+ shipped App Store apps</p>
-        <div class="roster">
-          <div class="roster-group">
-            <span class="mono" style="color:var(--mist)">ASAP Visuals · 2022–2026 · published via ASAP Visuals &amp; MWM</span>
-            <div class="app-list">
-              <a class="app" href="https://apps.apple.com/us/app/ai-chat-bot-assistant-izi/id1667441037" target="_blank" rel="noopener">
-                <div class="an">izi AI <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">AI assistant for chat, image generation and recognition, and quick writing and math help.</div>
-              </a>
-              <a class="app" href="https://apps.apple.com/us/app/typeflow-ai-keyboard-writer/id6475330598" target="_blank" rel="noopener">
-                <div class="an">izi Type <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">AI keyboard (now TypeFlow) that drafts, rewrites and translates text right inside any app.</div>
-              </a>
-              <a class="app" href="https://apps.apple.com/us/app/party-cam-disposable-camera/id6651825891" target="_blank" rel="noopener">
-                <div class="an">PartyCam <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">Disposable-camera app for weddings and parties — shared event albums with a retro film look.</div>
-              </a>
-              <a class="app" href="https://apps.apple.com/us/app/edith-aesthetic-photo-editor/id1477761909" target="_blank" rel="noopener">
-                <div class="an">Edith <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">Aesthetic photo and video editor for polished, on-trend social content.</div>
-              </a>
-              <a class="app" href="https://apps.apple.com/us/app/picmix-photo-collage-maker/id1616180744" target="_blank" rel="noopener">
-                <div class="an">Templates <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">Photo collage maker (PicMIX) with ready-made layouts and templates for social posts.</div>
-              </a>
-            </div>
-          </div>
-          <div class="roster-group">
-            <span class="mono" style="color:var(--mist)">System Technologies · 2018–2022 · fintech &amp; transport for Belarusian clients</span>
-            <div class="app-list">
-              <div class="app">
-                <div class="an">Drive&amp;Pay</div>
-                <div class="ad">Pay for fuel at the pump straight from your car, across the Belarusneft station network.</div>
-              </div>
-              <div class="app">
-                <div class="an">Tix</div>
-                <div class="ad">Contactless fare payment and e-tickets for city public transport.</div>
-              </div>
-              <a class="app" href="https://apps.apple.com/by/app/%D0%B4%D0%B7%D1%8F%D0%BA%D1%83%D0%B9/id1317507397" target="_blank" rel="noopener">
-                <div class="an">Дзякуй <span class="arr" aria-hidden="true">↗</span></div>
-                <div class="ad">Cardless fuel payment at A-100 stations — pay from the car without leaving the pump.</div>
-              </a>
-              <div class="app">
-                <div class="an">Звезда</div>
-                <div class="ad">Loyalty and rewards app — collect and redeem points with a card linked in-app.</div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <ul class="notes" style="margin-top:24px">
-          <li>Full-stack when needed: I built PartyCam's backend in Python on Firebase (Firestore + Cloud Functions), plus PHP chat backends on other projects.</li>
-        </ul>
+    <!-- CAREER ROSTER -->
+    <div class="roster reveal">
+      <h3>Highlights from 50+ shipped App Store apps</h3>
+
+      <div class="group">ASAP Visuals · 2022–2026 · published via ASAP Visuals &amp; MWM</div>
+      <div class="grid-4">
+        <a class="card" href="https://apps.apple.com/us/app/ai-chat-bot-assistant-izi/id1667441037" target="_blank" rel="noopener"><div class="t">izi AI</div><div class="d">AI assistant for chat, image generation and recognition, and quick writing and math help.</div></a>
+        <a class="card" href="https://apps.apple.com/us/app/typeflow-ai-keyboard-writer/id6475330598" target="_blank" rel="noopener"><div class="t">izi Type</div><div class="d">AI keyboard (now TypeFlow) that drafts, rewrites and translates text right inside any app.</div></a>
+        <a class="card" href="https://apps.apple.com/us/app/party-cam-disposable-camera/id6651825891" target="_blank" rel="noopener"><div class="t">PartyCam</div><div class="d">Disposable-camera app for weddings and parties — shared event albums with a retro film look.</div></a>
+        <a class="card" href="https://apps.apple.com/us/app/edith-aesthetic-photo-editor/id1477761909" target="_blank" rel="noopener"><div class="t">Edith</div><div class="d">Aesthetic photo and video editor for polished, on-trend social content.</div></a>
       </div>
 
+      <div class="group" style="margin-top:36px">System Technologies · 2018–2022 · fintech &amp; transport for Belarusian clients</div>
+      <div class="grid-4">
+        <div class="card"><div class="t">Drive&amp;Pay</div><div class="d">Pay for fuel at the pump straight from your car, across the Belarusneft station network.</div></div>
+        <div class="card"><div class="t">Tix</div><div class="d">Contactless fare payment and e-tickets for city public transport.</div></div>
+        <a class="card" href="https://apps.apple.com/by/app/%D0%B4%D0%B7%D1%8F%D0%BA%D1%83%D0%B9/id1317507397" target="_blank" rel="noopener"><div class="t">Дзякуй</div><div class="d">Cardless fuel payment at A-100 stations — pay from the car without leaving the pump.</div></a>
+        <div class="card"><div class="t">Звезда</div><div class="d">Loyalty and rewards app — collect and redeem points with a card linked in-app.</div></div>
+      </div>
+
+      <p class="note">Full-stack when needed: I built PartyCam's backend in Python on Firebase (Firestore + Cloud Functions), plus PHP chat backends on other projects.</p>
     </div>
   </section>
 
+  <!-- ================= DOMAINS ================= -->
+  <div class="domains grid-3 reveal" role="list" aria-label="Core focus areas">
+    <div class="card" role="listitem"><div class="t">Fintech</div><div class="m">StoreKit 2 · live rates · in-app purchases</div></div>
+    <div class="card" role="listitem"><div class="t">Health &amp; Fitness</div><div class="m">HealthKit · WorkoutKit · Core Motion</div></div>
+    <div class="card" role="listitem"><div class="t">IoT</div><div class="m">Core Bluetooth · iBeacon · Core Location</div></div>
+    <div class="card" role="listitem"><div class="t">Entertainment</div><div class="m">AVFoundation · audio · playback</div></div>
+    <div class="card" role="listitem"><div class="t">Photo &amp; Video</div><div class="m">AVCapture · Vision · Core Image</div></div>
+    <div class="card" role="listitem"><div class="t">AR</div><div class="m">ARKit · RealityKit · SceneKit</div></div>
+  </div>
+
   <!-- ================= EXPERIENCE ================= -->
-  <section id="experience" class="wrap divider">
+  <section id="experience">
+    <div class="eyebrow">Experience</div>
     <div class="sec-head reveal">
-      <span class="eyebrow">Experience</span>
       <h2>A decade-plus, shipping iOS.</h2>
       <p>From web and backend beginnings to leading an iOS team and going independent — releasing apps the whole way.</p>
     </div>
 
-    <div class="timeline">
-      <div class="tl reveal">
-        <div class="when">2026 — Present</div>
-        <h3>Independent iOS Developer</h3>
-        <div class="org">Self-employed (JDG) · Warsaw</div>
-        <p>Building and shipping my own products — iRunning chief among them — and running the growth side myself, from App Store optimization to release strategy.</p>
-        <div class="meta-row"><span class="chip">Swift</span><span class="chip">SwiftUI</span><span class="chip">watchOS</span><span class="chip">ASO</span></div>
+    <div class="rows">
+      <div class="row reveal">
+        <div class="when">2021 — Present</div>
+        <div>
+          <div class="head"><h3>Independent iOS Developer</h3><span class="org">Self-employed (JDG) · Warsaw</span></div>
+          <p>Building and shipping my own products — iRunning chief among them — and running the growth side myself, from App Store optimization to release strategy.</p>
+          <div class="stack">Swift · SwiftUI · watchOS · ASO</div>
+        </div>
       </div>
-
-      <div class="tl reveal">
+      <div class="row reveal">
         <div class="when">Jan 2022 — Apr 2026</div>
-        <h3>iOS Developer</h3>
-        <div class="org">ASAP Visuals, Inc. · Warsaw</div>
-        <p>Developed and supported five App Store apps (izi AI, izi Type, PartyCam, Edith, Templates) across internal and outsourced projects, with ongoing updates and refactoring — and built backend services too: PHP for chat, Python on Firebase for PartyCam.</p>
-        <div class="meta-row"><span class="chip">Swift</span><span class="chip">UIKit</span><span class="chip">PHP</span><span class="chip">Python</span><span class="chip">Firebase</span></div>
+        <div>
+          <div class="head"><h3>Senior iOS Developer</h3><span class="org">ASAP Visuals, Inc. · Warsaw</span></div>
+          <p>Developed and supported five App Store apps (izi AI, izi Type, PartyCam, Edith) across internal and outsourced projects, with ongoing updates and refactoring — and built backend services too: PHP for chat, Python on Firebase for PartyCam.</p>
+          <div class="stack">Swift · UIKit · PHP · Python · Firebase</div>
+        </div>
       </div>
-
-      <div class="tl reveal">
-        <div class="when">Aug 2018 — Jul 2022</div>
-        <h3>Lead iOS Developer</h3>
-        <div class="org">System Technologies · Minsk</div>
-        <p>Led the iOS team — architecture, project management, mentoring junior developers, and working directly with foreign clients. Shipped 5+ App Store apps (Drive&amp;Pay, Tix, Дзякуй, Звезда and others) and helped run the company's internal education program of weekly talks and workshops.</p>
-        <div class="meta-row"><span class="chip">iOS Lead</span><span class="chip">Architecture</span><span class="chip">Mentoring</span><span class="chip">App Store</span></div>
+      <div class="row reveal">
+        <div class="when">Aug 2018 — Jan 2022</div>
+        <div>
+          <div class="head"><h3>Lead iOS Developer</h3><span class="org">System Technologies · Minsk</span></div>
+          <p>Led the iOS team — architecture, project management, mentoring junior developers, and working directly with foreign clients. Shipped 5+ App Store apps (Drive&amp;Pay, Tix, Дзякуй, Звезда and others) and helped run the company's internal education program of weekly talks and workshops.</p>
+          <div class="stack">iOS Lead · Architecture · Mentoring · App Store</div>
+        </div>
       </div>
-
-      <div class="tl past reveal">
+      <div class="row reveal">
         <div class="when">Jun 2017 — Jun 2018</div>
-        <h3>iOS Software Developer</h3>
-        <div class="org">EffectiveSoft Corporation · Belarus</div>
-        <p>Built and released three App Store apps on long-term client projects, with regular updates and refactoring.</p>
+        <div>
+          <div class="head"><h3>iOS Software Developer</h3><span class="org">EffectiveSoft Corporation · Belarus</span></div>
+          <p>Built and released three App Store apps on long-term client projects, with regular updates and refactoring.</p>
+        </div>
       </div>
-
-      <div class="tl past reveal">
+      <div class="row reveal">
         <div class="when">Nov 2015 — Apr 2017</div>
-        <h3>iOS Software Developer</h3>
-        <div class="org">Goozix</div>
-        <p>Shipped 10+ App Store apps, owned architecture on iOS projects, mentored juniors, and contributed to internal education — workshops and news digests.</p>
+        <div>
+          <div class="head"><h3>iOS Software Developer</h3><span class="org">Goozix</span></div>
+          <p>Shipped 10+ App Store apps, owned architecture on iOS projects, mentored juniors, and contributed to internal education — workshops and news digests.</p>
+        </div>
       </div>
-
-      <div class="tl past reveal">
+      <div class="row reveal">
         <div class="when">Feb 2014 — Nov 2014</div>
-        <h3>iOS Developer</h3>
-        <div class="org">Wellnuts Creative Group · Minsk</div>
-        <p>Prototyped and shipped 5+ iOS apps for the agency and its clients.</p>
+        <div>
+          <div class="head"><h3>iOS Developer</h3><span class="org">Wellnuts Creative Group · Minsk</span></div>
+          <p>Prototyped and shipped 5+ iOS apps for the agency and its clients.</p>
+        </div>
       </div>
-
-      <div class="tl past reveal">
+      <div class="row reveal">
         <div class="when">2011 — 2014</div>
-        <h3>Web &amp; Backend Developer</h3>
-        <div class="org">Maksis · Qulix Systems</div>
-        <p>Where it started: Yii-based CMS, Yandex widgets, social-promotion tools, and backends for mobile apps.</p>
+        <div>
+          <div class="head"><h3>Web &amp; Backend Developer</h3><span class="org">Maksis · Qulix Systems</span></div>
+          <p>Where it started: Yii-based CMS, Yandex widgets, social-promotion tools, and backends for mobile apps.</p>
+        </div>
       </div>
     </div>
   </section>
 
   <!-- ================= SKILLS ================= -->
-  <section id="skills" class="wrap divider">
+  <section id="skills">
+    <div class="eyebrow">Skills</div>
     <div class="sec-head reveal">
-      <span class="eyebrow">Skills</span>
       <h2>The full toolkit.</h2>
       <p>A decade of iOS, from language internals to monetization and CI/CD — the stack I reach for, end to end.</p>
     </div>
 
-    <div class="skills-grid reveal">
-      <div class="sk">
-        <div class="sk-label">Languages</div>
-        <div class="sk-items">Swift (incl. Swift 6), Objective-C</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">UI</div>
-        <div class="sk-items">UIKit, SwiftUI, WidgetKit (widgets, Live Activities), watchOS (WatchKit / SwiftUI), Auto Layout, Core Animation</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Architecture</div>
-        <div class="sk-items">MVVM, Redux / Unidirectional Data Flow, Clean Architecture, modular design (SPM)</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Concurrency &amp; Reactive</div>
-        <div class="sk-items">Swift Concurrency (async/await, actors), GCD</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Graphics &amp; Media</div>
-        <div class="sk-items">Core Image (custom filter kernels), AVFoundation / AVCapture, Camera Control API, Vision, Core ML, color management</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Monetization</div>
-        <div class="sk-items">StoreKit 2, RevenueCat, Adapty, Apphud, paywall &amp; pricing A/B testing, subscription analytics (LTV, retention, conversion)</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Analytics &amp; Attribution</div>
-        <div class="sk-items">Firebase (Analytics, Crashlytics, Remote Config), Amplitude, AppsFlyer, Adjust, Facebook</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Data &amp; Networking</div>
-        <div class="sk-items">Core Data, SwiftData, Realm, Keychain, URLSession, REST, Codable</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Hardware &amp; IoT</div>
-        <div class="sk-items">Core Bluetooth (BLE), iBeacon, Core Location, HealthKit</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Design Collaboration</div>
-        <div class="sk-items">Figma, Zeplin, Sketch, design-to-code workflow, attention to UI detail &amp; UX</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">Testing</div>
-        <div class="sk-items">XCTest, Unit / UI testing</div>
-      </div>
-      <div class="sk">
-        <div class="sk-label">CI/CD &amp; Tooling</div>
-        <div class="sk-items">Fastlane, Xcode Cloud, Git, SPM, CocoaPods, App Store Connect, TestFlight, Instruments</div>
-      </div>
+    <div class="grid-3 reveal" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div class="card"><div class="t">Languages</div><div class="d">Swift (incl. Swift 6), Objective-C</div></div>
+      <div class="card"><div class="t">UI</div><div class="d">UIKit, SwiftUI, WidgetKit (widgets, Live Activities), watchOS (WatchKit / SwiftUI), Auto Layout, Core Animation</div></div>
+      <div class="card"><div class="t">Architecture</div><div class="d">MVVM, Redux / Unidirectional Data Flow, Clean Architecture, modular design (SPM)</div></div>
+      <div class="card"><div class="t">Concurrency &amp; Reactive</div><div class="d">Swift Concurrency (async/await, actors), GCD</div></div>
+      <div class="card"><div class="t">Graphics &amp; Media</div><div class="d">Core Image (custom filter kernels), AVFoundation / AVCapture, Camera Control API, Vision, Core ML, color management</div></div>
+      <div class="card"><div class="t">Monetization</div><div class="d">StoreKit 2, RevenueCat, Adapty, Apphud, paywall &amp; pricing A/B testing, subscription analytics (LTV, retention, conversion)</div></div>
+      <div class="card"><div class="t">Analytics &amp; Attribution</div><div class="d">Firebase (Analytics, Crashlytics, Remote Config), Amplitude, AppsFlyer, Adjust, Facebook</div></div>
+      <div class="card"><div class="t">Data &amp; Networking</div><div class="d">Core Data, SwiftData, Realm, Keychain, URLSession, REST, Codable</div></div>
+      <div class="card"><div class="t">Hardware &amp; IoT</div><div class="d">Core Bluetooth (BLE), iBeacon, Core Location, HealthKit</div></div>
+      <div class="card"><div class="t">Design Collaboration</div><div class="d">Figma, Zeplin, Sketch, design-to-code workflow, attention to UI detail &amp; UX</div></div>
+      <div class="card"><div class="t">Testing</div><div class="d">XCTest, Unit / UI testing</div></div>
+      <div class="card"><div class="t">CI/CD &amp; Tooling</div><div class="d">Fastlane, Xcode Cloud, Git, SPM, CocoaPods, App Store Connect, TestFlight, Instruments</div></div>
     </div>
   </section>
 
   <!-- ================= WRITING ================= -->
-  <section id="writing" class="wrap divider">
+  <section id="writing">
+    <div class="eyebrow">Writing</div>
     <div class="sec-head reveal">
-      <span class="eyebrow">Writing</span>
       <h2>Notes from the build.</h2>
       <p>Short, practical write-ups on the things I hit while shipping. First full posts are going up now — more on the way.</p>
     </div>
@@ -573,71 +488,68 @@
     <!--
       POST LIST — newest first. To publish a post:
         1) create the page from writing/_TEMPLATE.html  (see WRITING.md)
-        2) copy an <a class="post"> block below, inside the START/END markers,
+        2) copy an <a class="row post"> block below, inside the START/END markers,
            point href at the new file, and set the title / date / dek.
-      Items still marked "Draft · 2026" are teasers with no page yet.
     -->
-    <div class="posts reveal">
+    <div class="rows reveal">
       <!-- POST-LIST:START -->
-      <a class="post" href="writing/smoothing-noisy-gps.html">
-        <span class="ptitle">Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app</span>
+      <a class="row post" href="writing/smoothing-noisy-gps.html">
         <span class="pmeta">Jun 2026 · 8 min</span>
-        <span class="dek">Why raw watch GPS jitters, and the two-step pipeline I use to get a clean route.</span>
+        <span><span class="ptitle" style="display:block">Smoothing noisy GPS: Kalman + Douglas–Peucker in a running app</span><span class="dek">Why raw watch GPS jitters, and the two-step pipeline I use to get a clean route.</span></span>
       </a>
-      <a class="post" href="writing/watch-first-intervals.html">
-        <span class="ptitle">Watch-first, not watch-also: designing intervals for the wrist</span>
+      <a class="row post" href="writing/watch-first-intervals.html">
         <span class="pmeta">May 2026 · 7 min</span>
-        <span class="dek">Treating the watch as the primary screen changes nearly every UI decision.</span>
+        <span><span class="ptitle" style="display:block">Watch-first, not watch-also: designing intervals for the wrist</span><span class="dek">Treating the watch as the primary screen changes nearly every UI decision.</span></span>
       </a>
-      <a class="post" href="writing/ios-code-that-lasts.html">
-        <span class="ptitle">Fifty apps in: what actually makes iOS code last</span>
+      <a class="row post" href="writing/ios-code-that-lasts.html">
         <span class="pmeta">Apr 2026 · 9 min</span>
-        <span class="dek">Lessons from a decade of shipping — and, harder, maintaining — App Store apps.</span>
+        <span><span class="ptitle" style="display:block">Fifty apps in: what actually makes iOS code last</span><span class="dek">Lessons from a decade of shipping — and, harder, maintaining — App Store apps.</span></span>
       </a>
-      <a class="post" href="writing/aso-for-a-tiny-app.html">
-        <span class="ptitle">ASO for a tiny app: 200 keywords and what moved installs</span>
+      <a class="row post" href="writing/aso-for-a-tiny-app.html">
         <span class="pmeta">Mar 2026 · 8 min</span>
-        <span class="dek">A small currency app as a sandbox for keywords, icons and custom product pages.</span>
+        <span><span class="ptitle" style="display:block">ASO for a tiny app: 200 keywords and what moved installs</span><span class="dek">A small currency app as a sandbox for keywords, icons and custom product pages.</span></span>
       </a>
       <!-- POST-LIST:END -->
     </div>
-    <a class="writing-all reveal" href="writing/">All writing <span aria-hidden="true">→</span></a>
+    <a class="more reveal" href="writing/">All writing →</a>
   </section>
 
   <!-- ================= ABOUT ================= -->
-  <section id="about" class="wrap divider">
-    <div class="sec-head reveal"><span class="eyebrow">About</span></div>
-    <div class="about-grid">
-      <div class="about reveal">
-        <p>I'm a senior iOS engineer based near Warsaw, with <b>10+ years building for the platform</b> and 15+ years in software overall. I've shipped <b>50+ apps to the App Store</b> — from straightforward REST clients to geolocation and AR — for startups and mid-size companies.</p>
-        <p>Along the way I led an iOS team, owned architecture, mentored junior developers, and worked directly with international clients. When a product needed it, I went full-stack — building backends in <b>PHP and Python on Firebase</b>.</p>
-        <p>These days I build and ship my own products, like iRunning, and stay close to the parts beyond the code — App Store optimization, growth, and the craft of a release people actually keep. I work across <b>English, Polish and Russian</b>.</p>
+  <section id="about">
+    <div class="eyebrow">About</div>
+    <div class="about">
+      <div class="about-copy reveal">
+        <p>I'm a senior iOS engineer based near Warsaw, with 10+ years building for the platform and 15+ years in software overall. I've shipped 50+ apps to the App Store — from straightforward REST clients to geolocation and AR — for startups and mid-size companies.</p>
+        <p>Along the way I led an iOS team, owned architecture, mentored junior developers, and worked directly with international clients. When a product needed it, I went full-stack — building backends in PHP and Python on Firebase.</p>
+        <p>These days I build and ship my own products, like iRunning, and stay close to the parts beyond the code — App Store optimization, growth, and the craft of a release people actually keep. I work across English, Polish and Russian.</p>
       </div>
       <aside class="facts reveal" aria-label="At a glance">
-        <div class="fact"><div class="k">Based in</div><div class="v">Warsaw, Poland</div></div>
-        <div class="fact"><div class="k">Experience</div><div class="v">10+ yrs iOS · 15+ yrs software</div></div>
-        <div class="fact"><div class="k">Shipped</div><div class="v">50+ App Store apps</div></div>
-        <div class="fact"><div class="k">Core</div><div class="v">Swift, SwiftUI, UIKit, Concurrency</div></div>
-        <div class="fact"><div class="k">Also</div><div class="v">HealthKit, StoreKit, MapKit, AR, geolocation</div></div>
-        <div class="fact"><div class="k">Backend</div><div class="v">PHP, Python, Firebase</div></div>
-        <div class="fact"><div class="k">Languages</div><div class="v">EN · PL · RU</div></div>
-        <div class="fact"><div class="k">Education</div><div class="v">BSUIR — Computer Software Eng.</div></div>
-        <div class="fact"><div class="k">Certification</div><div class="v">Data-driven Product Mgmt · GoPractice!</div></div>
+        <span class="k">Based in</span><span>Warsaw, Poland</span>
+        <span class="k">Experience</span><span>10+ yrs iOS · 15+ yrs software</span>
+        <span class="k">Shipped</span><span>50+ App Store apps</span>
+        <span class="k">Core</span><span>Swift, SwiftUI, UIKit, Concurrency</span>
+        <span class="k">Also</span><span>HealthKit, StoreKit, MapKit, AR, geolocation</span>
+        <span class="k">Backend</span><span>PHP, Python, Firebase</span>
+        <span class="k">Languages</span><span>EN · PL · RU</span>
+        <span class="k">Education</span><span>BSUIR — Computer Software Eng.</span>
+        <span class="k">Certification</span><span>Data-driven Product Mgmt · GoPractice!</span>
       </aside>
     </div>
   </section>
 
   <!-- ================= CONTACT ================= -->
-  <section id="contact" class="wrap divider">
+  <section id="contact">
     <div class="contact reveal">
-      <span class="eyebrow">Contact</span>
-      <h2 style="margin-top:14px">Have an iOS idea, or hiring?</h2>
-      <p class="lede">Senior iOS engineer, open to strong product work, contracts and collaborations. Quickest ways to reach me:</p>
+      <div>
+        <div class="eyebrow">Contact</div>
+        <h2>Have an iOS idea, or hiring?</h2>
+        <p>Senior iOS engineer, open to strong product work, contracts and collaborations. Quickest ways to reach me:</p>
+      </div>
       <div class="links">
-        <a class="link" href="mailto:bartwader@gmail.com"><span><span class="lbl">Email</span><span class="sub">bartwader@gmail.com</span></span><span class="arr">↗</span></a>
-        <a class="link" href="https://www.linkedin.com/in/dzionis-brek" target="_blank" rel="noopener"><span><span class="lbl">LinkedIn</span><span class="sub">in/dzionis-brek</span></span><span class="arr">↗</span></a>
-        <a class="link" href="https://apps.apple.com/us/developer/dzionis-brek/id525602569" target="_blank" rel="noopener"><span><span class="lbl">App Store</span><span class="sub">Dzionis Brek</span></span><span class="arr">↗</span></a>
-        <a class="link" href="tel:+48517399929"><span><span class="lbl">Phone</span><span class="sub">+48 517 399 929</span></span><span class="arr">↗</span></a>
+        <a class="link" href="mailto:bartwader@gmail.com"><span class="k">Email</span><span class="v">bartwader@gmail.com ↗</span></a>
+        <a class="link" href="https://www.linkedin.com/in/dzionis-brek" target="_blank" rel="noopener"><span class="k">LinkedIn</span><span class="v">in/dzionis-brek ↗</span></a>
+        <a class="link" href="https://apps.apple.com/us/developer/dzionis-brek/id525602569" target="_blank" rel="noopener"><span class="k">App Store</span><span class="v">Dzionis Brek ↗</span></a>
+        <a class="link" href="tel:+48517399929"><span class="k">Phone</span><span class="v">+48 517 399 929 ↗</span></a>
       </div>
     </div>
   </section>
@@ -645,12 +557,11 @@
 </main>
 
 <footer>
-  <div class="foot-inner">
-    <span>© <span id="yr"></span> Dzionis Brek</span>
-    <span>Senior iOS Engineer · Warsaw</span>
-    <a href="#top">Back to top ↑</a>
-  </div>
+  <div>© <span id="yr"></span> Dzionis Brek · Senior iOS Engineer · Warsaw</div>
+  <a href="#top">Back to top ↑</a>
 </footer>
+
+</div>
 
 <script>
   document.getElementById('yr').textContent = new Date().getFullYear();
@@ -659,7 +570,7 @@
   if (!reduce && 'IntersectionObserver' in window) {
     var io = new IntersectionObserver(function(entries){
       entries.forEach(function(e){ if(e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target);} });
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+    }, { threshold: 0.08, rootMargin: '0px 0px -6% 0px' });
     document.querySelectorAll('.reveal').forEach(function(el){ io.observe(el); });
   } else {
     document.querySelectorAll('.reveal').forEach(function(el){ el.classList.add('in'); });
@@ -668,9 +579,9 @@
   var links = Array.prototype.slice.call(document.querySelectorAll('.nav-links a'));
   var sections = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
   function setActive(){
-    var pos = window.scrollY + 120, current = sections[0];
+    var pos = window.scrollY + 140, current = null;
     sections.forEach(function(s){ if(s && s.offsetTop <= pos) current = s; });
-    links.forEach(function(a){ a.classList.toggle('active', a.getAttribute('href') === '#' + (current && current.id)); });
+    links.forEach(function(a){ a.classList.toggle('active', !!current && a.getAttribute('href') === '#' + current.id); });
   }
   window.addEventListener('scroll', setActive, { passive:true });
   setActive();

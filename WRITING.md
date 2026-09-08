@@ -70,9 +70,10 @@ same folder, so the `href` is just the filename:
 **4. (Optional) Feature it on the home page**
 
 The Writing section on `index.html` is a highlights preview with an
-"All writing →" link to the archive. To surface a post there too, add the same
-entry inside that file's `POST-LIST:START / END` markers — but there the `href`
-needs the folder prefix: `href="writing/your-post-slug.html"`.
+"All writing →" link to the archive. To surface a post there too, copy one of
+the `<a class="row post">` blocks inside that file's `POST-LIST:START / END`
+markers (the home page puts `pmeta` first, then `ptitle` + `dek`), and note
+that there the `href` needs the folder prefix: `href="writing/your-post-slug.html"`.
 
 That's it. Repeat for each post.
 
@@ -90,7 +91,7 @@ python3 -m http.server 8000
 
 ## Deploy
 
-No build. Copy the whole `site/` folder (`index.html`, `assets/`, `writing/`)
+No build. Copy the whole `site/` folder (`index.html`, `assets/`, `favicon/`, `writing/`)
 to GitHub Pages / Vercel / Netlify, or push it to your Pages repo.
 
 ## Notes & conventions
